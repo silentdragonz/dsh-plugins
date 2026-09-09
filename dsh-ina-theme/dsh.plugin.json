@@ -1,0 +1,16 @@
+{
+  "id": "dsh-ina-theme",
+  "version": "0.2.4",
+  "main": "./lib/index.js",
+  "description": "Ina color theme pair: eggplant/rose/amber palette with plum-tinted neutrals.",
+  "engines": {
+    "dsh": ">=0.1.2-rc.1"
+  },
+  "contributes": {
+    "tools": [],
+    "skills": []
+  },
+  "client": {
+    "main": "./lib/client.js"
+  }
+}

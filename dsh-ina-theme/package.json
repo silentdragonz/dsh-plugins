@@ -1,0 +1,42 @@
+{
+  "name": "dsh-ina-theme",
+  "version": "0.2.4",
+  "description": "Ina theme for DSH: eggplant-indigo surfaces, rose-magenta brand, amber highlights, plum-tinted neutrals. Applies the palette via a token override layer, with a Settings page for enable/disable and Auto/Light/Dark variant choice (persisted server-side).",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime"
+      ],
+      "platform": "web",
+      "immediately": true
+    }
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "dsh.plugin.json",
+    "README.md"
+  ],
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "theme"
+  ],
+  "license": "MIT"
+}

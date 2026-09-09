@@ -1,0 +1,29 @@
+# dsh-phoenix-tracing bundle patch.
+#
+# Takes over the sessionTelemetry seam from @deepseek-ai/dsh-session-telemetry-otel:
+# the shipped backend maps session records onto OTLP/HTTP LOGS; this one projects
+# the same captured records onto proper OTel TRACES (OpenInference spans: Turn /
+# Step / LLM / TOOL) exported over OTLP/HTTP to Arize Phoenix. The seam admits one
+# backend per context, so the OTLP log row is disabled here.
+#
+# Endpoints / policy (override per deployment in the profile's cordis.patch.yml):
+#   DSH_PHOENIX_MODE     FULL | FEEDBACK_ONLY | DISABLED   (default: FULL)
+#   DSH_PHOENIX_URL      full OTLP traces URL              (default: http://localhost:6006/v1/traces)
+#   DSH_PHOENIX_PROJECT  Phoenix project name              (default: deepseek-harness)
+- id: session-telemetry-otel
+  disabled: true
+
+- insert:
+    - id: phoenix-tracing
+      name: dsh-phoenix-tracing
+      config:
+        mode: !!js process.env.DSH_PHOENIX_MODE || 'FULL'
+        endpoint: !!js process.env.DSH_PHOENIX_URL || 'http://localhost:6006/v1/traces'
+        projectName: !!js process.env.DSH_PHOENIX_PROJECT || 'deepseek-harness'
+        captureContent: true
+        # Keep shutdown snappy when no Phoenix is listening (GUI/CLI exit path).
+        exporter:
+          timeoutMillis: 2000
+        processor:
+          scheduledDelayMillis: 5000
+        shutdownTimeoutMillis: 3000

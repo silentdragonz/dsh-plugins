@@ -1,0 +1,7 @@
+# dsh-sidebar-security-audit bundle patch
+#
+# Inserted into the loader tree when the package is listed in the profile's
+# dsh.profile.bundles (or installed via `dsh plugin --profile web add`).
+- insert:
+    - id: security-audit-panel
+      name: 'dsh-sidebar-security-audit'

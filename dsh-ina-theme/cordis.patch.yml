@@ -1,0 +1,8 @@
+# dsh-ina-theme bundle patch
+#
+# Inserted into the loader tree when the package is listed in the profile's
+# dsh.profile.bundles (or installed via `dsh plugin --profile web add <dir>`).
+# The host half is a no-op; the client half registers the themes.
+- insert:
+    - id: ina-theme
+      name: 'dsh-ina-theme'

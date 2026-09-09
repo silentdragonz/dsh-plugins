@@ -1,0 +1,28 @@
+{
+  "name": "dsh-fff-follow-workspace",
+  "version": "1.0.0",
+  "description": "Persistent fff search tools for the DeepSeek Harness (ffgrep / ffffind / fff_multi_grep): bridges the fff-mcp binary over MCP stdio and keeps one server rooted at each active session workspace, so searches follow whichever repo the agent is working in.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "README.md"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "cordis",
+    "fff",
+    "search",
+    "grep",
+    "mcp"
+  ],
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": ">=0.1.2-rc.1 <0.2.0",
+    "@deepseek-ai/schemastery": ">=3.18.0"
+  }
+}
