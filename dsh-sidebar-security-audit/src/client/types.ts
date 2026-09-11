@@ -87,6 +87,8 @@ export interface RunInfo {
 
 export interface RunsResponse {
   root: string
+  /** The live workspace (session cwd) — base for workspace-relative file refs. */
+  workspace: string
   runs: RunInfo[]
 }
 

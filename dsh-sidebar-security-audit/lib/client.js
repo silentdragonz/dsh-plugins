@@ -36,6 +36,43 @@ window.__ModuleLoader__.load({
 				root
 			})
 		};
+		/** The harness open-in-app routes (mounted on the same webServer origin). */
+		const OPEN_APPS_ROUTE = "/open-in-app/apps";
+		const OPEN_LAUNCH_ROUTE = "/open-in-app/open";
+		const openInApp = {
+			/**
+			* App ids the host probed as installed (the harness's probed editor
+			* catalog). Empty on any failure — a host without open-in-app renders no
+			* file links at all.
+			*/
+			apps: async () => {
+				try {
+					const resp = await fetch(OPEN_APPS_ROUTE, { headers: { accept: "application/json" } });
+					if (!resp.ok) return [];
+					const body = await resp.json().catch(() => void 0);
+					if (body === null || typeof body !== "object" || !("apps" in body) || !Array.isArray(body.apps)) return [];
+					return body.apps.filter((id) => typeof id === "string");
+				} catch {
+					return [];
+				}
+			},
+			/** Launch one probed app on one absolute directory. */
+			launch: async (app, path) => {
+				const resp = await fetch(OPEN_LAUNCH_ROUTE, {
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({
+						app,
+						path
+					})
+				});
+				if (!resp.ok) {
+					const body = await resp.json().catch(() => void 0);
+					const message = body !== null && typeof body === "object" && "message" in body ? String(body.message) : `HTTP ${resp.status}`;
+					throw new Error(message);
+				}
+			}
+		};
 		//#endregion
 		//#region src/client/types.ts
 		function isConfirmed(finding) {
@@ -105,6 +142,23 @@ window.__ModuleLoader__.load({
 				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("summary", { children: props.title }), props.children]
 			});
 		}
+		function CodeRef(props) {
+			const label = `${props.file}${props.line !== void 0 ? `:${props.line}` : ""}`;
+			if (props.onOpenFile === void 0) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+				className: "dsa-code-ref",
+				children: label
+			});
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+				type: "button",
+				className: "dsa-code-ref dsa-link",
+				onClick: (e) => {
+					e.stopPropagation();
+					props.onOpenFile?.(props.file);
+				},
+				title: `Open ${props.file} in the editor`,
+				children: label
+			});
+		}
 		function TraceList(props) {
 			return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("ol", {
 				className: "dsa-trace",
@@ -113,12 +167,17 @@ window.__ModuleLoader__.load({
 						className: "dsa-kind",
 						children: step.kind
 					}),
-					step.file !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+					step.file !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(CodeRef, {
+						file: step.file,
+						line: step.line,
+						onOpenFile: props.onOpenFile
+					}),
+					step.scope !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 						className: "dsa-code-ref",
 						children: [
-							step.file,
-							step.line !== void 0 ? `:${step.line}` : "",
-							step.scope !== void 0 ? ` ${step.scope}()` : ""
+							" ",
+							step.scope,
+							"()"
 						]
 					}),
 					step.description !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
@@ -216,7 +275,10 @@ window.__ModuleLoader__.load({
 						trace.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Section, {
 							title: `Trace (${trace.length} steps)`,
 							defaultOpen: true,
-							children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(TraceList, { steps: trace })
+							children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(TraceList, {
+								steps: trace,
+								onOpenFile: props.onOpenFile
+							})
 						}),
 						conditions.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Section, {
 							title: `Exploitation conditions (${conditions.length})`,
@@ -279,9 +341,9 @@ window.__ModuleLoader__.load({
 							children: [remediation.strategy !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 								className: "dsa-text",
 								children: remediation.strategy
-							}), (remediation.code_changes ?? []).map((c, i) => /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", { children: [c.file_name !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-								className: "dsa-code-ref",
-								children: c.file_name
+							}), (remediation.code_changes ?? []).map((c, i) => /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", { children: [c.file_name !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(CodeRef, {
+								file: c.file_name,
+								onOpenFile: props.onOpenFile
 							}), c.fixed_code !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("pre", {
 								className: "dsa-pre",
 								children: c.fixed_code
@@ -352,6 +414,8 @@ window.__ModuleLoader__.load({
 .dsa-trace { list-style: none; margin: 4px 0; padding: 0; }
 .dsa-trace li { margin: 4px 0; padding-left: 8px; border-left: 2px solid rgba(128,128,128,0.35); }
 .dsa-code-ref { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(128,128,128,0.14); border-radius: 4px; padding: 0 4px; }
+.dsa-code-ref.dsa-link { color: inherit; border: 0; cursor: pointer; text-align: left; font: inherit; font-family: ui-monospace, monospace; font-size: 11px; background: rgba(128,128,128,0.14); border-radius: 4px; padding: 0 4px; }
+.dsa-code-ref.dsa-link:hover { text-decoration: underline; }
 .dsa-kind { font-size: 10px; font-weight: 700; text-transform: uppercase; border-radius: 4px; padding: 0 5px; margin-right: 4px; border: 1px solid rgba(128,128,128,0.4); }
 .dsa-empty { padding: 28px 16px; text-align: center; opacity: 0.8; }
 .dsa-rejected { border-left-color: #8d8d8d !important; opacity: 0.85; }
@@ -371,10 +435,14 @@ window.__ModuleLoader__.load({
 		* The Security Audit sidebar tab: discovers audit runs (host route), selects
 		* one, parses its findings.json and renders severity stats, filters, finding
 		* cards, and one-click opening of the run's markdown artifacts through the
-		* better-sidebar file viewer.
+		* better-sidebar file viewer. File refs inside findings (trace entry/sink
+		* paths) open the file's directory in the harness open-in-app editor
+		* (dsh >= 0.1.5-rc.1) when the host probed one.
 		*/
 		/** localStorage key for the root override. */
 		const ROOT_KEY = "dsh-sidebar-security-audit:root";
+		/** localStorage key for the open-in-app editor choice (probed app id). */
+		const OPEN_APP_KEY = "dsh-sidebar-security-audit:open-app";
 		/** Artifacts openable in the sidebar viewer (host-whitelisted). */
 		const ARTIFACTS = [
 			"REPORT.md",
@@ -407,6 +475,7 @@ window.__ModuleLoader__.load({
 			const [rootDraft, setRootDraft] = (0, react.useState)(loadStoredRoot);
 			const [root, setRoot] = (0, react.useState)(loadStoredRoot);
 			const [serverRoot, setServerRoot] = (0, react.useState)("");
+			const [workspace, setWorkspace] = (0, react.useState)("");
 			const [runs, setRuns] = (0, react.useState)([]);
 			const [selectedDir, setSelectedDir] = (0, react.useState)("");
 			const [findings, setFindings] = (0, react.useState)([]);
@@ -417,16 +486,30 @@ window.__ModuleLoader__.load({
 			const [sevFilter, setSevFilter] = (0, react.useState)(/* @__PURE__ */ new Set());
 			const [verdict, setVerdict] = (0, react.useState)("all");
 			const [query, setQuery] = (0, react.useState)("");
+			const [openApps, setOpenApps] = (0, react.useState)([]);
+			const [openChoice, setOpenChoice] = (0, react.useState)(() => {
+				try {
+					return window.localStorage.getItem(OPEN_APP_KEY) ?? "";
+				} catch {
+					return "";
+				}
+			});
+			const [openError, setOpenError] = (0, react.useState)("");
 			(0, react.useEffect)(() => {
 				injectStyles();
+			}, []);
+			(0, react.useEffect)(() => {
+				openInApp.apps().then(setOpenApps);
 			}, []);
 			const refresh = (0, react.useCallback)(async (rootOverride) => {
 				setLoadingRuns(true);
 				setError("");
+				setOpenError("");
 				try {
 					const resp = await api.runs(rootOverride !== void 0 && rootOverride !== "" ? rootOverride : void 0);
 					setRuns(resp.runs);
 					setServerRoot(resp.root);
+					setWorkspace(resp.workspace);
 					setSelectedDir((prev) => resp.runs.some((r) => r.dir === prev) ? prev : resp.runs[0]?.dir ?? "");
 				} catch (e) {
 					setError(e instanceof Error ? e.message : String(e));
@@ -517,6 +600,40 @@ window.__ModuleLoader__.load({
 				storeRoot(next);
 				setRoot(next);
 			};
+			/** Remember the open-in-app editor choice (probed app id). */
+			const chooseOpenApp = (appId) => {
+				setOpenChoice(appId);
+				try {
+					window.localStorage.setItem(OPEN_APP_KEY, appId);
+				} catch {}
+			};
+			/**
+			* Launch the user's editor on the directory holding a finding's file ref.
+			* Trace paths are repo-relative (absolute and `./`-prefixed are honored);
+			* the harness open route takes directories only, so the file's parent
+			* directory is the target.
+			*/
+			const openFileRef = (0, react.useCallback)((file) => {
+				if (openApps.length === 0) return;
+				const clean = file.trim().replace(/^\.\//, "");
+				const abs = clean !== "" && clean.startsWith("/") ? clean : workspace !== "" && clean !== "" ? `${workspace}/${clean}` : "";
+				if (abs === "") {
+					setOpenError("file ref is relative but no workspace is known");
+					return;
+				}
+				const slash = abs.lastIndexOf("/");
+				const dir = slash > 0 ? abs.slice(0, slash) : workspace;
+				const app = openChoice !== "" && openApps.includes(openChoice) ? openChoice : openApps[0] ?? "";
+				if (app === "") return;
+				setOpenError("");
+				openInApp.launch(app, dir).catch((e) => {
+					setOpenError(e instanceof Error ? e.message : String(e));
+				});
+			}, [
+				openApps,
+				openChoice,
+				workspace
+			]);
 			const openArtifact = (file) => {
 				if (selected === void 0) return;
 				const path = `${selected.dir}/${file}`;
@@ -573,6 +690,16 @@ window.__ModuleLoader__.load({
 										className: "dsa-btn",
 										onClick: applyRoot,
 										children: "Go"
+									}),
+									openApps.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("select", {
+										className: "dsa-select",
+										value: openChoice !== "" && openApps.includes(openChoice) ? openChoice : openApps[0],
+										onChange: (e) => chooseOpenApp(e.target.value),
+										title: "Editor for finding file links (harness open-in-app)",
+										children: openApps.map((id) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("option", {
+											value: id,
+											children: id
+										}, id))
 									})
 								]
 							}),
@@ -589,6 +716,10 @@ window.__ModuleLoader__.load({
 					error !== "" && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 						className: "dsa-error",
 						children: ["Scan failed: ", error]
+					}),
+					openError !== "" && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+						className: "dsa-error",
+						children: ["Open failed: ", openError]
 					}),
 					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 						className: "dsa-scroll",
@@ -718,7 +849,8 @@ window.__ModuleLoader__.load({
 							}),
 							!loadingFindings && findings.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [filtered.map((f, i) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)(FindingCard, {
 								finding: f,
-								index: i
+								index: i,
+								onOpenFile: openApps.length > 0 ? openFileRef : void 0
 							}, i)), filtered.length === 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 								className: "dsa-empty",
 								children: "No findings match the current filters."

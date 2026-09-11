@@ -38,6 +38,8 @@ export const PANEL_CSS = `.dsa-panel { display: flex; flex-direction: column; he
 .dsa-trace { list-style: none; margin: 4px 0; padding: 0; }
 .dsa-trace li { margin: 4px 0; padding-left: 8px; border-left: 2px solid rgba(128,128,128,0.35); }
 .dsa-code-ref { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(128,128,128,0.14); border-radius: 4px; padding: 0 4px; }
+.dsa-code-ref.dsa-link { color: inherit; border: 0; cursor: pointer; text-align: left; font: inherit; font-family: ui-monospace, monospace; font-size: 11px; background: rgba(128,128,128,0.14); border-radius: 4px; padding: 0 4px; }
+.dsa-code-ref.dsa-link:hover { text-decoration: underline; }
 .dsa-kind { font-size: 10px; font-weight: 700; text-transform: uppercase; border-radius: 4px; padding: 0 5px; margin-right: 4px; border: 1px solid rgba(128,128,128,0.4); }
 .dsa-empty { padding: 28px 16px; text-align: center; opacity: 0.8; }
 .dsa-rejected { border-left-color: #8d8d8d !important; opacity: 0.85; }

@@ -2,11 +2,13 @@
  * The Security Audit sidebar tab: discovers audit runs (host route), selects
  * one, parses its findings.json and renders severity stats, filters, finding
  * cards, and one-click opening of the run's markdown artifacts through the
- * better-sidebar file viewer.
+ * better-sidebar file viewer. File refs inside findings (trace entry/sink
+ * paths) open the file's directory in the harness open-in-app editor
+ * (dsh >= 0.1.5-rc.1) when the host probed one.
  */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { TabComponentProps, BetterSidebarService } from 'dsh-better-sidebar'
-import { api } from './api.ts'
+import { api, openInApp } from './api.ts'
 import { parseFindings, isConfirmed, type Finding, type RunInfo } from './types.ts'
 import { SEVERITY_ORDER, SEVERITY_COLORS, SEVERITY_LABELS, asSeverity } from './severity.ts'
 import { FindingCard } from './FindingCard.tsx'
@@ -14,6 +16,8 @@ import { injectStyles } from './styles.ts'
 
 /** localStorage key for the root override. */
 const ROOT_KEY = 'dsh-sidebar-security-audit:root'
+/** localStorage key for the open-in-app editor choice (probed app id). */
+const OPEN_APP_KEY = 'dsh-sidebar-security-audit:open-app'
 /** Artifacts openable in the sidebar viewer (host-whitelisted). */
 const ARTIFACTS = ['REPORT.md', 'FINDINGS-DETAIL.md', 'architecture.md'] as const
 
@@ -52,6 +56,7 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
   const [rootDraft, setRootDraft] = useState<string>(loadStoredRoot)
   const [root, setRoot] = useState<string>(loadStoredRoot)
   const [serverRoot, setServerRoot] = useState<string>('')
+  const [workspace, setWorkspace] = useState<string>('')
   const [runs, setRuns] = useState<RunInfo[]>([])
   const [selectedDir, setSelectedDir] = useState<string>('')
   const [findings, setFindings] = useState<Finding[]>([])
@@ -62,16 +67,29 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
   const [sevFilter, setSevFilter] = useState<Set<string>>(new Set())
   const [verdict, setVerdict] = useState<VerdictFilter>('all')
   const [query, setQuery] = useState('')
-
+  const [openApps, setOpenApps] = useState<string[]>([])
+  const [openChoice, setOpenChoice] = useState<string>(() => {
+    try {
+      return window.localStorage.getItem(OPEN_APP_KEY) ?? ''
+    } catch {
+      return ''
+    }
+  })
+  const [openError, setOpenError] = useState<string>('')
   useEffect(() => { injectStyles() }, [])
+  // Probe the open-in-app catalog once; a host without the harness routes
+  // (dsh < 0.1.5-rc.1) answers empty and file refs render inert.
+  useEffect(() => { void openInApp.apps().then(setOpenApps) }, [])
 
   const refresh = useCallback(async (rootOverride?: string) => {
     setLoadingRuns(true)
     setError('')
+    setOpenError('')
     try {
       const resp = await api.runs(rootOverride !== undefined && rootOverride !== '' ? rootOverride : undefined)
       setRuns(resp.runs)
       setServerRoot(resp.root)
+      setWorkspace(resp.workspace)
       setSelectedDir(prev => (
         resp.runs.some(r => r.dir === prev) ? prev : (resp.runs[0]?.dir ?? '')
       ))
@@ -175,6 +193,40 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
     setRoot(next)
   }
 
+  /** Remember the open-in-app editor choice (probed app id). */
+  const chooseOpenApp = (appId: string): void => {
+    setOpenChoice(appId)
+    try {
+      window.localStorage.setItem(OPEN_APP_KEY, appId)
+    } catch { /* storage unavailable */ }
+  }
+
+  /**
+   * Launch the user's editor on the directory holding a finding's file ref.
+   * Trace paths are repo-relative (absolute and `./`-prefixed are honored);
+   * the harness open route takes directories only, so the file's parent
+   * directory is the target.
+   */
+  const openFileRef = useCallback((file: string): void => {
+    if (openApps.length === 0) return
+    const clean = file.trim().replace(/^\.\//, '')
+    const abs = clean !== '' && clean.startsWith('/')
+      ? clean
+      : workspace !== '' && clean !== '' ? `${workspace}/${clean}` : ''
+    if (abs === '') {
+      setOpenError('file ref is relative but no workspace is known')
+      return
+    }
+    const slash = abs.lastIndexOf('/')
+    const dir = slash > 0 ? abs.slice(0, slash) : workspace
+    const app = openChoice !== '' && openApps.includes(openChoice) ? openChoice : openApps[0] ?? ''
+    if (app === '') return
+    setOpenError('')
+    void openInApp.launch(app, dir).catch((e: unknown) => {
+      setOpenError(e instanceof Error ? e.message : String(e))
+    })
+  }, [openApps, openChoice, workspace])
+
   const openArtifact = (file: string): void => {
     if (selected === undefined) return
     const path = `${selected.dir}/${file}`
@@ -207,14 +259,24 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
             </button>
           )}
           <button className="dsa-btn" onClick={applyRoot}>Go</button>
+          {openApps.length > 0 && (
+            <select
+              className="dsa-select"
+              value={openChoice !== '' && openApps.includes(openChoice) ? openChoice : openApps[0]}
+              onChange={e => chooseOpenApp(e.target.value)}
+              title="Editor for finding file links (harness open-in-app)"
+            >
+              {openApps.map(id => <option key={id} value={id}>{id}</option>)}
+            </select>
+          )}
         </div>
         <div className="dsa-hint">
           Scans <code>{serverRoot !== '' ? serverRoot : '…'}</code> — prefers the workspace's
           .security-audit folder, else the skill's default output root.
         </div>
       </div>
-
       {error !== '' && <div className="dsa-error">Scan failed: {error}</div>}
+      {openError !== '' && <div className="dsa-error">Open failed: {openError}</div>}
 
       <div className="dsa-scroll">
         {runs.length === 0 && !loadingRuns && error === '' && (
@@ -297,7 +359,9 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
             )}
             {!loadingFindings && findings.length > 0 && (
               <>
-                {filtered.map((f, i) => <FindingCard key={i} finding={f} index={i} />)}
+                {filtered.map((f, i) => (
+                  <FindingCard key={i} finding={f} index={i} onOpenFile={openApps.length > 0 ? openFileRef : undefined} />
+                ))}
                 {filtered.length === 0 && <div className="dsa-empty">No findings match the current filters.</div>}
               </>
             )}

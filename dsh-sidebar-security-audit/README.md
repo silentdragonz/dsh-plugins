@@ -15,7 +15,10 @@ Registers a **Security Audit** sidebar tab (shield icon) that:
   `~/security-audit-skill` (both customizable — see Configuration).
 - Selects a run and parses its `findings.json` into **confirmed / rejected** findings.
 - Shows severity stats (critical/high/medium/low/informational chips, click to filter), a
-  confirmed/rejected toggle, and free-text search.
+  confirmed/rejected toggle, and free-text search. File refs inside findings (trace
+  entry/sink paths, remediation file names) open the file's directory in your editor through
+  the harness **open-in-app** routes (`dsh >= 0.1.5-rc.1`); a host without them renders the
+  refs inert.
 - Renders each finding as a card: severity + confidence badges, description, root cause, the
   entrypoint→sink **trace**, exploitation conditions, execution (payloads / instructions /
   expected result), remediation and severity rationale. Rejected findings show the rejection reason.

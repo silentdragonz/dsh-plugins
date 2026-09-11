@@ -335,7 +335,8 @@ async function handleRequest(ctx, req, res) {
 	if (sub === "/health") {
 		writeJson(res, 200, {
 			ok: true,
-			root: defaultRoot
+			root: defaultRoot,
+			workspace
 		});
 		return;
 	}
@@ -344,6 +345,7 @@ async function handleRequest(ctx, req, res) {
 		if (requested === "") {
 			writeJson(res, 200, {
 				root: defaultRoot,
+				workspace,
 				runs: await scanRuns(defaultRoot)
 			});
 			return;
@@ -360,6 +362,7 @@ async function handleRequest(ctx, req, res) {
 		}
 		writeJson(res, 200, {
 			root,
+			workspace,
 			runs: await scanRuns(root)
 		});
 		return;

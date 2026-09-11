@@ -21,18 +21,35 @@ function Section(props: { title: string; defaultOpen?: boolean; children: ReactN
   )
 }
 
-function TraceList(props: { steps: TraceStep[] }): ReactNode {
+function CodeRef(props: {
+  file: string
+  line?: number
+  onOpenFile?: ((file: string) => void) | undefined
+}): ReactNode {
+  const label = `${props.file}${props.line !== undefined ? `:${props.line}` : ''}`
+  if (props.onOpenFile === undefined) return <span className="dsa-code-ref">{label}</span>
+  return (
+    <button
+      type="button"
+      className="dsa-code-ref dsa-link"
+      onClick={e => { e.stopPropagation(); props.onOpenFile?.(props.file) }}
+      title={`Open ${props.file} in the editor`}
+    >
+      {label}
+    </button>
+  )
+}
+
+function TraceList(props: { steps: TraceStep[]; onOpenFile?: (file: string) => void }): ReactNode {
   return (
     <ol className="dsa-trace">
       {props.steps.map((step, i) => (
         <li key={i}>
           {step.kind !== undefined && <span className="dsa-kind">{step.kind}</span>}
           {step.file !== undefined && (
-            <span className="dsa-code-ref">
-              {step.file}{step.line !== undefined ? `:${step.line}` : ''}
-              {step.scope !== undefined ? ` ${step.scope}()` : ''}
-            </span>
+            <CodeRef file={step.file} line={step.line} onOpenFile={props.onOpenFile} />
           )}
+          {step.scope !== undefined && <span className="dsa-code-ref"> {step.scope}()</span>}
           {step.description !== undefined && <div className="dsa-text">{step.description}</div>}
         </li>
       ))}
@@ -43,6 +60,8 @@ function TraceList(props: { steps: TraceStep[] }): ReactNode {
 export interface FindingCardProps {
   finding: Finding
   index: number
+  /** Launches the file's directory in the open-in-app editor (undefined = inert refs). */
+  onOpenFile?: (file: string) => void
 }
 
 export function FindingCard(props: FindingCardProps): ReactNode {
@@ -107,7 +126,7 @@ export function FindingCard(props: FindingCardProps): ReactNode {
           )}
           {trace.length > 0 && (
             <Section title={`Trace (${trace.length} steps)`} defaultOpen>
-              <TraceList steps={trace} />
+              <TraceList steps={trace} onOpenFile={props.onOpenFile} />
             </Section>
           )}
           {conditions.length > 0 && (
@@ -148,7 +167,7 @@ export function FindingCard(props: FindingCardProps): ReactNode {
               {remediation.strategy !== undefined && <div className="dsa-text">{remediation.strategy}</div>}
               {(remediation.code_changes ?? []).map((c, i) => (
                 <div key={i}>
-                  {c.file_name !== undefined && <div className="dsa-code-ref">{c.file_name}</div>}
+                  {c.file_name !== undefined && <CodeRef file={c.file_name} onOpenFile={props.onOpenFile} />}
                   {c.fixed_code !== undefined && <pre className="dsa-pre">{c.fixed_code}</pre>}
                 </div>
               ))}

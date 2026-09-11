@@ -68,14 +68,14 @@ const health = await get(`${API}/health`)
 console.log('health:', JSON.stringify(health))
 assert.equal(health.status, 200)
 assert.equal(health.body.root, localRoot)
+assert.equal(health.body.workspace, workspace)
 
 const runs = await get(`${API}/runs`)
 console.log('runs:', JSON.stringify(runs.body.runs.map(r => ({ repo: r.repo, name: r.name, counts: r.counts && r.counts.confirmed + '/' + r.counts.rejected, sev: r.counts && r.counts.severity.high }))))
 assert.equal(runs.status, 200)
 assert.equal(runs.body.root, localRoot)
+assert.equal(runs.body.workspace, workspace)
 assert.ok(runs.body.runs.some(r => r.repo === 'sample-app' && r.name === 'run-1'))
-
-// --- artifact reads carry the audit root and stay contained in it
 const sample = runs.body.runs.find(r => r.repo === 'sample-app')
 const fnd = await get(`${API}/findings?` + q({ dir: sample.dir, root: localRoot }))
 assert.equal(fnd.status, 200)

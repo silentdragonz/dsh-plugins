@@ -123,13 +123,13 @@ async function handleRequest(ctx: PluginContext, req: IncomingMessage, res: Serv
     : await defaultAuditRoot(workspace, expandRoot(settings.fallbackRoot, workspace))
 
   if (sub === '/health') {
-    writeJson(res, 200, { ok: true, root: defaultRoot })
+    writeJson(res, 200, { ok: true, root: defaultRoot, workspace })
     return
   }
   if (sub === '/runs') {
     const requested = url.searchParams.get('root') ?? ''
     if (requested === '') {
-      writeJson(res, 200, { root: defaultRoot, runs: await scanRuns(defaultRoot) })
+      writeJson(res, 200, { root: defaultRoot, workspace, runs: await scanRuns(defaultRoot) })
       return
     }
     const root = expandRoot(requested, workspace)
@@ -142,7 +142,7 @@ async function handleRequest(ctx: PluginContext, req: IncomingMessage, res: Serv
       writeJson(res, 400, { error: `audit root does not exist: ${root}` })
       return
     }
-    writeJson(res, 200, { root, runs: await scanRuns(root) })
+    writeJson(res, 200, { root, workspace, runs: await scanRuns(root) })
     return
   }
   if (sub === '/findings' || sub === '/report') {
