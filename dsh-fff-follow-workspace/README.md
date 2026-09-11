@@ -14,29 +14,44 @@ whole pool is torn down when the plugin unmounts.
 
 This is the persistent (composition-file) form of the former *dynamic* Cordis
 plugin of the same name. Dynamic plugins disappear on process restart; this
-package is mounted as a host row from the profile composition and survives
-restarts.
+package is mounted as a host row from the profile's bundle layer stack and
+survives restarts.
 
 ## Activation
 
-The package registers nothing on its own; a composition row activates it.
-This deployment mounts it from the profile patch layer
-(`~/.dsh/profiles/web/cordis.patch.yml`):
+The package is a DSH plugin bundle: its manifest declares
+`"dsh": { "bundle": { "patch": "./cordis.patch.yml" } }`, so adding it as a
+plugin mounts it automatically — no composition editing required:
 
-```yaml
-- insert:
-    - id: fff-follow-workspace
-      name: dsh-fff-follow-workspace
-      config:
-        binPath: /home/node/.dsh/fff/fff-mcp
-        defaultCwd: /workspace/workspace/tmp
+```sh
+dsh plugin --profile web add dsh-fff-follow-workspace          # from the registry
+dsh plugin --profile web add file:/path/to/dsh-fff-follow-workspace  # from a checkout
 ```
 
-`cordis.patch.yml` reloads live, so editing the row (or the package) takes
-effect without a restart as long as the package is installed under the profile
-(`file:` dependency + `pnpm install`).
+`dsh plugin` installs the package into the profile, then reconciles the
+profile's `dsh.profile.bundles` layer stack: a dependency whose manifest
+declares `dsh.bundle` joins the stack, and the profile boot applies its
+`cordis.patch.yml` — which inserts the `fff-follow-workspace` row that mounts
+this plugin. The stack re-evaluates on every later `dsh plugin` run, so the
+row survives `update` and `remove` reconciles.
+
+If the package was wired by hand before this bundle declaration existed
+(an `insert` row for `fff-follow-workspace` in the profile's own
+`cordis.patch.yml`), remove that row when the bundle layer takes over: the
+bundle insert and the manual insert would both mount at the next boot, and
+the loader rejects a duplicate entry id.
 
 ## Configuration
+
+The inserted row carries no config; every field has a schema default in
+`lib/index.js`. Override per deployment from the profile's own patch layer
+(`~/.dsh/profiles/<name>/cordis.patch.yml`), targeting the row id:
+
+```yaml
+- id: fff-follow-workspace
+  config:
+    binPath: /usr/local/bin/fff-mcp
+```
 
 | Field             | Default                          | Meaning                                        |
 | ----------------- | -------------------------------- | ---------------------------------------------- |
