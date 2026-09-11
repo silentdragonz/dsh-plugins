@@ -86,6 +86,7 @@ function emptyCounts() {
 	return {
 		total: 0,
 		confirmed: 0,
+		needsValidation: 0,
 		rejected: 0,
 		severity: {
 			critical: 0,
@@ -137,7 +138,7 @@ async function statFile(p) {
 		return;
 	}
 }
-/** Summarize findings.json text (array of confirmed/rejected findings per report-schema.json). */
+/** Summarize findings.json text (confirmed / needs_validation / rejected findings per report-schema.json). */
 function summarizeFindings(raw) {
 	const counts = emptyCounts();
 	let parsed;
@@ -159,11 +160,13 @@ function summarizeFindings(raw) {
 			counts.rejected += 1;
 			continue;
 		}
-		if (item.verdict === "confirmed") {
+		const verdict = item.verdict;
+		if (verdict === "confirmed") {
 			counts.confirmed += 1;
 			const sev = item.severity?.overall_severity;
 			if (typeof sev === "string" && SEVERITIES.includes(sev)) counts.severity[sev] += 1;
-		} else counts.rejected += 1;
+		} else if (verdict === "needs_validation") counts.needsValidation += 1;
+		else counts.rejected += 1;
 	}
 	return { counts };
 }

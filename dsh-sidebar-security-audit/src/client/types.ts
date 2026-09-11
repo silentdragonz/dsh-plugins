@@ -14,6 +14,12 @@ export interface TraceStep {
   description?: string
 }
 
+export interface EvidenceItem {
+  file?: string
+  line?: number
+  description?: string
+}
+
 export interface ConditionItem {
   kind?: string
   description?: string
@@ -23,6 +29,9 @@ export interface ExecutionInfo {
   attacker_perspective?: string
   payloads?: string[]
   instructions?: string[]
+  /** Latest schema name (required in the confirmed variant). */
+  observed_result?: string
+  /** Pre-rename outputs; rendered as a fallback. */
   expected_result?: string
 }
 
@@ -42,6 +51,11 @@ export interface ConfidenceInfo {
   reason?: string
 }
 
+export interface ValidationPlan {
+  local?: string
+  deployment?: string
+}
+
 export interface ConfirmedFinding {
   verdict: 'confirmed'
   title?: string
@@ -49,6 +63,7 @@ export interface ConfirmedFinding {
   root_cause?: string
   intended_behavior?: string
   trace?: TraceStep[]
+  evidence?: EvidenceItem[]
   conditions?: ConditionItem[]
   execution?: ExecutionInfo
   remediation?: RemediationInfo
@@ -56,21 +71,42 @@ export interface ConfirmedFinding {
   confidence?: ConfidenceInfo
 }
 
+/** A candidate whose decisive validation is blocked (schema verdict 'needs_validation'). */
+export interface BlockedFinding {
+  verdict: 'needs_validation'
+  title?: string
+  description?: string
+  claimed_root_cause?: string
+  trace?: TraceStep[]
+  evidence?: EvidenceItem[]
+  blockers?: string[]
+  validation_plan?: ValidationPlan
+}
+
 export interface RejectedFinding {
   verdict: string
   title?: string
+  description?: string
+  claimed_root_cause?: string
+  trace?: TraceStep[]
+  evidence?: EvidenceItem[]
   reason?: string
 }
 
-export type Finding = ConfirmedFinding | RejectedFinding
+export type Finding = ConfirmedFinding | BlockedFinding | RejectedFinding
 
 export function isConfirmed(finding: Finding): finding is ConfirmedFinding {
   return finding.verdict === 'confirmed'
 }
 
+export function isBlocked(finding: Finding): finding is BlockedFinding {
+  return finding.verdict === 'needs_validation'
+}
+
 export interface FindingCounts {
   total: number
   confirmed: number
+  needsValidation: number
   rejected: number
   severity: Record<Severity, number>
 }

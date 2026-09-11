@@ -13,9 +13,11 @@ Registers a **Security Audit** sidebar tab (shield icon) that:
   `findings.json` / `REPORT.md` / `FINDINGS-DETAIL.md` / `architecture.md` counts as a run).
   The default root prefers the workspace's `.security-audit` folder and falls back to
   `~/security-audit-skill` (both customizable — see Configuration).
-- Selects a run and parses its `findings.json` into **confirmed / rejected** findings.
+- Selects a run and parses its `findings.json` into **confirmed / needs validation /
+  rejected** findings (current cloudflare/security-audit `report-schema.json`, including the
+  required `evidence` sections and `observed_result` execution results).
 - Shows severity stats (critical/high/medium/low/informational chips, click to filter), a
-  confirmed/rejected toggle, and free-text search. File refs inside findings (trace
+  confirmed / needs-validation / rejected toggle, and free-text search. File refs inside findings (trace
   entry/sink paths with line numbers, remediation file names) open the **file itself** in the
   editor selected in the harness open-in-app button (vscode-family / zed URL schemes through
   better-sidebar's external opener; other apps open the file's directory via the harness

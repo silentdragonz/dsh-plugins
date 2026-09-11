@@ -36,6 +36,7 @@ const SEVERITIES: readonly string[] = ['critical', 'high', 'medium', 'low', 'inf
 export interface FindingCounts {
   total: number
   confirmed: number
+  needsValidation: number
   rejected: number
   severity: Record<Severity, number>
 }
@@ -59,7 +60,7 @@ export interface RunInfo {
 
 function emptyCounts(): FindingCounts {
   return {
-    total: 0, confirmed: 0, rejected: 0,
+    total: 0, confirmed: 0, needsValidation: 0, rejected: 0,
     severity: { critical: 0, high: 0, medium: 0, low: 0, informational: 0 },
   }
 }
@@ -111,7 +112,7 @@ async function statFile(p: string): Promise<{ size: number; mtimeMs: number } | 
   }
 }
 
-/** Summarize findings.json text (array of confirmed/rejected findings per report-schema.json). */
+/** Summarize findings.json text (confirmed / needs_validation / rejected findings per report-schema.json). */
 export function summarizeFindings(raw: string): { counts: FindingCounts; parseError?: string } {
   const counts = emptyCounts()
   let parsed: unknown
@@ -131,6 +132,8 @@ export function summarizeFindings(raw: string): { counts: FindingCounts; parseEr
       if (typeof sev === 'string' && SEVERITIES.includes(sev)) {
         counts.severity[sev as Severity] += 1
       }
+    } else if (verdict === 'needs_validation') {
+      counts.needsValidation += 1
     } else {
       counts.rejected += 1
     }

@@ -1,12 +1,15 @@
 /**
  * One finding card: severity/confidence badges, collapsible sections for
- * description, root cause, trace, conditions, execution and remediation.
- * Rejected findings render collapsed with the rejection reason.
+ * description, root cause, trace, evidence, conditions, execution and
+ * remediation. Blocked (needs validation) findings render an amber card
+ * with blockers and validation plan; rejected findings stay collapsed with
+ * the rejection reason.
  */
 import { useState, type ReactNode } from 'react'
-import type { Finding, TraceStep } from './types.ts'
-import { isConfirmed } from './types.ts'
+import { isConfirmed, isBlocked } from './types.ts'
+import type { Finding, TraceStep, EvidenceItem } from './types.ts'
 import { asSeverity, SEVERITY_COLORS, SEVERITY_LABELS } from './severity.ts'
+
 
 function Badge(props: { color: string; label: string }): ReactNode {
   return <span className="dsa-badge" style={{ background: props.color }}>{props.label}</span>
@@ -57,6 +60,21 @@ function TraceList(props: { steps: TraceStep[]; onOpenFile?: (file: string, line
   )
 }
 
+function EvidenceList(props: { items: EvidenceItem[]; onOpenFile?: (file: string, line?: number) => void }): ReactNode {
+  return (
+    <ul className="dsa-trace">
+      {props.items.map((item, i) => (
+        <li key={i}>
+          {item.file !== undefined && (
+            <CodeRef file={item.file} line={item.line} onOpenFile={props.onOpenFile} />
+          )}
+          {item.description !== undefined && <div className="dsa-text">{item.description}</div>}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export interface FindingCardProps {
   finding: Finding
   index: number
@@ -68,27 +86,113 @@ export function FindingCard(props: FindingCardProps): ReactNode {
   const [open, setOpen] = useState(false)
   const { finding } = props
 
-  if (!isConfirmed(finding)) {
+  if (isBlocked(finding)) {
+    const trace = finding.trace ?? []
+    const evidence = finding.evidence ?? []
     return (
-      <div className="dsa-card dsa-rejected">
+      <div className="dsa-card" style={{ borderLeftColor: '#e8b931' }}>
         <div className="dsa-card-head" onClick={() => setOpen(o => !o)}>
           <span className="dsa-badges">
-            <Badge color="#8d8d8d" label="rejected" />
+            <Badge color="#e8b931" label="needs validation" />
           </span>
-          <div className="dsa-card-title">{finding.title ?? `Rejected candidate #${props.index + 1}`}</div>
+          <div className="dsa-card-title">{finding.title ?? `Blocked candidate #${props.index + 1}`}</div>
         </div>
         {open && (
           <div className="dsa-card-body">
-            <div className="dsa-text">{finding.reason ?? '(no reason recorded)'}</div>
+            {finding.description !== undefined && (
+              <Section title="Description" defaultOpen>
+                <div className="dsa-text">{finding.description}</div>
+              </Section>
+            )}
+            {finding.claimed_root_cause !== undefined && (
+              <Section title="Claimed root cause" defaultOpen>
+                <div className="dsa-text">{finding.claimed_root_cause}</div>
+              </Section>
+            )}
+            {trace.length > 0 && (
+              <Section title={`Trace (${trace.length} steps)`} defaultOpen>
+                <TraceList steps={trace} onOpenFile={props.onOpenFile} />
+              </Section>
+            )}
+            {evidence.length > 0 && (
+              <Section title={`Evidence (${evidence.length})`}>
+                <EvidenceList items={evidence} onOpenFile={props.onOpenFile} />
+              </Section>
+            )}
+            {(finding.blockers ?? []).length > 0 && (
+              <Section title={`Blockers (${(finding.blockers ?? []).length})`} defaultOpen>
+                <ul className="dsa-text" style={{ margin: '4px 0 4px 18px', padding: 0 }}>
+                  {(finding.blockers ?? []).map((b, i) => <li key={i}>{b}</li>)}
+                </ul>
+              </Section>
+            )}
+            {finding.validation_plan !== undefined && (
+              <Section title="Validation plan">
+                {finding.validation_plan.local !== undefined && (
+                  <div className="dsa-text"><b>Local:</b> {finding.validation_plan.local}</div>
+                )}
+                {finding.validation_plan.deployment !== undefined && (
+                  <div className="dsa-text"><b>Deployment:</b> {finding.validation_plan.deployment}</div>
+                )}
+              </Section>
+            )}
           </div>
         )}
       </div>
     )
   }
 
+  if (!isConfirmed(finding)) {
+    const trace = finding.trace ?? []
+    const evidence = finding.evidence ?? []
+  return (
+    <div className="dsa-card dsa-rejected">
+      <div className="dsa-card-head" onClick={() => setOpen(o => !o)}>
+        <span className="dsa-badges">
+          <Badge color="#8d8d8d" label="rejected" />
+        </span>
+        <div className="dsa-card-title">{finding.title ?? `Rejected candidate #${props.index + 1}`}</div>
+      </div>
+      {open && (
+        <div className="dsa-card-body">
+          {finding.reason !== undefined && (
+            <Section title="Rejection reason" defaultOpen>
+              <div className="dsa-text">{finding.reason}</div>
+            </Section>
+          )}
+          {finding.description !== undefined && (
+            <Section title="Description">
+              <div className="dsa-text">{finding.description}</div>
+            </Section>
+          )}
+          {finding.claimed_root_cause !== undefined && (
+            <Section title="Claimed root cause">
+              <div className="dsa-text">{finding.claimed_root_cause}</div>
+            </Section>
+          )}
+          {trace.length > 0 && (
+            <Section title={`Trace (${trace.length} steps)`}>
+              <TraceList steps={trace} onOpenFile={props.onOpenFile} />
+            </Section>
+          )}
+          {evidence.length > 0 && (
+            <Section title={`Evidence (${evidence.length})`}>
+              <EvidenceList items={evidence} onOpenFile={props.onOpenFile} />
+            </Section>
+          )}
+          {finding.reason === undefined && finding.claimed_root_cause === undefined && trace.length === 0 && evidence.length === 0 && (
+            <div className="dsa-text">(no reason recorded)</div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+  }
+
   const severity = asSeverity(finding.severity?.overall_severity)
   const color = SEVERITY_COLORS[severity]
   const trace = finding.trace ?? []
+  const evidence = finding.evidence ?? []
   const conditions = finding.conditions ?? []
   const execution = finding.execution
   const remediation = finding.remediation
@@ -129,6 +233,11 @@ export function FindingCard(props: FindingCardProps): ReactNode {
               <TraceList steps={trace} onOpenFile={props.onOpenFile} />
             </Section>
           )}
+          {evidence.length > 0 && (
+            <Section title={`Evidence (${evidence.length})`}>
+              <EvidenceList items={evidence} onOpenFile={props.onOpenFile} />
+            </Section>
+          )}
           {conditions.length > 0 && (
             <Section title={`Exploitation conditions (${conditions.length})`}>
               <ul className="dsa-text" style={{ margin: '4px 0 4px 18px', padding: 0 }}>
@@ -157,8 +266,8 @@ export function FindingCard(props: FindingCardProps): ReactNode {
                   </ol>
                 </>
               )}
-              {execution.expected_result !== undefined && (
-                <div className="dsa-text" style={{ marginTop: 4 }}><b>Expected result:</b> {execution.expected_result}</div>
+              {(execution.observed_result ?? execution.expected_result) !== undefined && (
+                <div className="dsa-text" style={{ marginTop: 4 }}><b>Observed result:</b> {execution.observed_result ?? execution.expected_result}</div>
               )}
             </Section>
           )}

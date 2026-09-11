@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { TabComponentProps, BetterSidebarService } from 'dsh-better-sidebar'
 import { api, openExternal, openInApp } from './api.ts'
-import { parseFindings, isConfirmed, type Finding, type RunInfo } from './types.ts'
+import { parseFindings, isConfirmed, isBlocked, type Finding, type RunInfo } from './types.ts'
 import { SEVERITY_ORDER, SEVERITY_COLORS, SEVERITY_LABELS, asSeverity } from './severity.ts'
 import { FindingCard } from './FindingCard.tsx'
 import { injectStyles } from './styles.ts'
@@ -42,7 +42,7 @@ const EDITOR_URL_SCHEMES: Readonly<Record<string, { template: string; lineTarget
   zed: { template: 'zed://file/{path}', lineTargeted: true },
 }
 
-type VerdictFilter = 'all' | 'confirmed' | 'rejected'
+type VerdictFilter = 'all' | 'confirmed' | 'blocked' | 'rejected'
 
 function loadStoredRoot(): string {
   try {
@@ -188,9 +188,10 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
   }, [selectedDir, serverRoot])
 
   const clientCounts = useMemo(() => {
-    const counts = { total: findings.length, confirmed: 0, rejected: 0 }
+    const counts = { total: findings.length, confirmed: 0, needsValidation: 0, rejected: 0 }
     for (const f of findings) {
       if (isConfirmed(f)) counts.confirmed += 1
+      else if (isBlocked(f)) counts.needsValidation += 1
       else counts.rejected += 1
     }
     return counts
@@ -210,16 +211,21 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
     const q = query.trim().toLowerCase()
     const rankOf = (f: Finding): number => isConfirmed(f)
       ? SEVERITY_ORDER.indexOf(asSeverity(f.severity?.overall_severity))
-      : SEVERITY_ORDER.length // rejected always last
+      : isBlocked(f)
+        ? SEVERITY_ORDER.length // blocked before rejected
+        : SEVERITY_ORDER.length + 1 // rejected always last
     return findings
       .filter(f => {
         if (verdict === 'confirmed' && !isConfirmed(f)) return false
-        if (verdict === 'rejected' && isConfirmed(f)) return false
+        if (verdict === 'blocked' && !isBlocked(f)) return false
+        if (verdict === 'rejected' && (isConfirmed(f) || isBlocked(f))) return false
         if (isConfirmed(f) && sevFilter.size > 0 && !sevFilter.has(asSeverity(f.severity?.overall_severity))) return false
         if (q !== '') {
           const hay = isConfirmed(f)
             ? `${f.title ?? ''} ${f.description ?? ''} ${f.root_cause ?? ''}`
-            : `${f.title ?? ''} ${f.reason ?? ''}`
+            : isBlocked(f)
+              ? `${f.title ?? ''} ${f.description ?? ''} ${f.claimed_root_cause ?? ''} ${(f.blockers ?? []).join(' ')}`
+              : `${f.title ?? ''} ${f.description ?? ''} ${f.claimed_root_cause ?? ''} ${f.reason ?? ''}`
           if (!hay.toLowerCase().includes(q)) return false
         }
         return true
@@ -343,7 +349,9 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
               {runs.map(r => (
                 <option key={r.dir} value={r.dir}>
                   {r.repo !== '.' ? `${r.repo} / ` : ''}{r.name}
-                  {r.counts !== undefined ? ` — ${r.counts.confirmed} confirmed / ${r.counts.rejected} rejected` : ''}
+                  {r.counts !== undefined
+                    ? ` — ${r.counts.confirmed} confirmed / ${r.counts.rejected} rejected${r.counts.needsValidation > 0 ? ` / ${r.counts.needsValidation} needs validation` : ''}`
+                    : ''}
                 </option>
               ))}
             </select>
@@ -367,6 +375,9 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
 
                 <div className="dsa-stats">
                   <span className="dsa-stat static"><b>{clientCounts.confirmed}</b>&nbsp;confirmed</span>
+                  {clientCounts.needsValidation > 0 && (
+                    <span className="dsa-stat static"><b>{clientCounts.needsValidation}</b>&nbsp;needs validation</span>
+                  )}
                   <span className="dsa-stat static"><b>{clientCounts.rejected}</b>&nbsp;rejected</span>
                   {SEVERITY_ORDER.map(sev => (
                     <span
@@ -385,6 +396,7 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
                 <div className="dsa-filters">
                   <button className={`dsa-btn${verdict === 'all' ? ' active' : ''}`} onClick={() => setVerdict('all')}>All</button>
                   <button className={`dsa-btn${verdict === 'confirmed' ? ' active' : ''}`} onClick={() => setVerdict('confirmed')}>Confirmed</button>
+                  <button className={`dsa-btn${verdict === 'blocked' ? ' active' : ''}`} onClick={() => setVerdict('blocked')}>Needs validation</button>
                   <button className={`dsa-btn${verdict === 'rejected' ? ' active' : ''}`} onClick={() => setVerdict('rejected')}>Rejected</button>
                   <input
                     className="dsa-search"

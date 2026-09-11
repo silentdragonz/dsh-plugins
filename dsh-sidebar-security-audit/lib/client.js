@@ -103,6 +103,9 @@ url: async (url) => {
 		function isConfirmed(finding) {
 			return finding.verdict === "confirmed";
 		}
+		function isBlocked(finding) {
+			return finding.verdict === "needs_validation";
+		}
 		/** Parse findings.json content leniently; returns the finding list. */
 		function parseFindings(content) {
 			try {
@@ -150,8 +153,10 @@ url: async (url) => {
 		//#region src/client/FindingCard.tsx
 		/**
 		* One finding card: severity/confidence badges, collapsible sections for
-		* description, root cause, trace, conditions, execution and remediation.
-		* Rejected findings render collapsed with the rejection reason.
+		* description, root cause, trace, evidence, conditions, execution and
+		* remediation. Blocked (needs validation) findings render an amber card
+		* with blockers and validation plan; rejected findings stay collapsed with
+		* the rejection reason.
 		*/
 		function Badge(props) {
 			return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
@@ -212,35 +217,178 @@ url: async (url) => {
 				] }, i))
 			});
 		}
+		function EvidenceList(props) {
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("ul", {
+				className: "dsa-trace",
+				children: props.items.map((item, i) => /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("li", { children: [item.file !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(CodeRef, {
+					file: item.file,
+					line: item.line,
+					onOpenFile: props.onOpenFile
+				}), item.description !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+					className: "dsa-text",
+					children: item.description
+				})] }, i))
+			});
+		}
 		function FindingCard(props) {
 			const [open, setOpen] = (0, react.useState)(false);
 			const { finding } = props;
-			if (!isConfirmed(finding)) return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-				className: "dsa-card dsa-rejected",
-				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-					className: "dsa-card-head",
-					onClick: () => setOpen((o) => !o),
-					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-						className: "dsa-badges",
-						children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Badge, {
-							color: "#8d8d8d",
-							label: "rejected"
-						})
-					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-						className: "dsa-card-title",
-						children: finding.title ?? `Rejected candidate #${props.index + 1}`
+			if (isBlocked(finding)) {
+				const trace = finding.trace ?? [];
+				const evidence = finding.evidence ?? [];
+				return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+					className: "dsa-card",
+					style: { borderLeftColor: "#e8b931" },
+					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+						className: "dsa-card-head",
+						onClick: () => setOpen((o) => !o),
+						children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+							className: "dsa-badges",
+							children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Badge, {
+								color: "#e8b931",
+								label: "needs validation"
+							})
+						}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+							className: "dsa-card-title",
+							children: finding.title ?? `Blocked candidate #${props.index + 1}`
+						})]
+					}), open && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+						className: "dsa-card-body",
+						children: [
+							finding.description !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Section, {
+								title: "Description",
+								defaultOpen: true,
+								children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+									className: "dsa-text",
+									children: finding.description
+								})
+							}),
+							finding.claimed_root_cause !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Section, {
+								title: "Claimed root cause",
+								defaultOpen: true,
+								children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+									className: "dsa-text",
+									children: finding.claimed_root_cause
+								})
+							}),
+							trace.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Section, {
+								title: `Trace (${trace.length} steps)`,
+								defaultOpen: true,
+								children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(TraceList, {
+									steps: trace,
+									onOpenFile: props.onOpenFile
+								})
+							}),
+							evidence.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Section, {
+								title: `Evidence (${evidence.length})`,
+								children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(EvidenceList, {
+									items: evidence,
+									onOpenFile: props.onOpenFile
+								})
+							}),
+							(finding.blockers ?? []).length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Section, {
+								title: `Blockers (${(finding.blockers ?? []).length})`,
+								defaultOpen: true,
+								children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("ul", {
+									className: "dsa-text",
+									style: {
+										margin: "4px 0 4px 18px",
+										padding: 0
+									},
+									children: (finding.blockers ?? []).map((b, i) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("li", { children: b }, i))
+								})
+							}),
+							finding.validation_plan !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(Section, {
+								title: "Validation plan",
+								children: [finding.validation_plan.local !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+									className: "dsa-text",
+									children: [
+										/* @__PURE__ */ (0, react_jsx_runtime.jsx)("b", { children: "Local:" }),
+										" ",
+										finding.validation_plan.local
+									]
+								}), finding.validation_plan.deployment !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+									className: "dsa-text",
+									children: [
+										/* @__PURE__ */ (0, react_jsx_runtime.jsx)("b", { children: "Deployment:" }),
+										" ",
+										finding.validation_plan.deployment
+									]
+								})]
+							})
+						]
 					})]
-				}), open && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-					className: "dsa-card-body",
-					children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-						className: "dsa-text",
-						children: finding.reason ?? "(no reason recorded)"
-					})
-				})]
-			});
+				});
+			}
+			if (!isConfirmed(finding)) {
+				const trace = finding.trace ?? [];
+				const evidence = finding.evidence ?? [];
+				return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+					className: "dsa-card dsa-rejected",
+					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+						className: "dsa-card-head",
+						onClick: () => setOpen((o) => !o),
+						children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+							className: "dsa-badges",
+							children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Badge, {
+								color: "#8d8d8d",
+								label: "rejected"
+							})
+						}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+							className: "dsa-card-title",
+							children: finding.title ?? `Rejected candidate #${props.index + 1}`
+						})]
+					}), open && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+						className: "dsa-card-body",
+						children: [
+							finding.reason !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Section, {
+								title: "Rejection reason",
+								defaultOpen: true,
+								children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+									className: "dsa-text",
+									children: finding.reason
+								})
+							}),
+							finding.description !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Section, {
+								title: "Description",
+								children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+									className: "dsa-text",
+									children: finding.description
+								})
+							}),
+							finding.claimed_root_cause !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Section, {
+								title: "Claimed root cause",
+								children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+									className: "dsa-text",
+									children: finding.claimed_root_cause
+								})
+							}),
+							trace.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Section, {
+								title: `Trace (${trace.length} steps)`,
+								children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(TraceList, {
+									steps: trace,
+									onOpenFile: props.onOpenFile
+								})
+							}),
+							evidence.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Section, {
+								title: `Evidence (${evidence.length})`,
+								children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(EvidenceList, {
+									items: evidence,
+									onOpenFile: props.onOpenFile
+								})
+							}),
+							finding.reason === void 0 && finding.claimed_root_cause === void 0 && trace.length === 0 && evidence.length === 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+								className: "dsa-text",
+								children: "(no reason recorded)"
+							})
+						]
+					})]
+				});
+			}
 			const severity = asSeverity(finding.severity?.overall_severity);
 			const color = SEVERITY_COLORS[severity];
 			const trace = finding.trace ?? [];
+			const evidence = finding.evidence ?? [];
 			const conditions = finding.conditions ?? [];
 			const execution = finding.execution;
 			const remediation = finding.remediation;
@@ -305,6 +453,13 @@ url: async (url) => {
 								onOpenFile: props.onOpenFile
 							})
 						}),
+						evidence.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Section, {
+							title: `Evidence (${evidence.length})`,
+							children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(EvidenceList, {
+								items: evidence,
+								onOpenFile: props.onOpenFile
+							})
+						}),
 						conditions.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Section, {
 							title: `Exploitation conditions (${conditions.length})`,
 							children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("ul", {
@@ -350,13 +505,13 @@ url: async (url) => {
 										children: s
 									}, i))
 								})] }),
-								execution.expected_result !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+								(execution.observed_result ?? execution.expected_result) !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 									className: "dsa-text",
 									style: { marginTop: 4 },
 									children: [
-										/* @__PURE__ */ (0, react_jsx_runtime.jsx)("b", { children: "Expected result:" }),
+										/* @__PURE__ */ (0, react_jsx_runtime.jsx)("b", { children: "Observed result:" }),
 										" ",
-										execution.expected_result
+										execution.observed_result ?? execution.expected_result
 									]
 								})
 							]
@@ -645,9 +800,11 @@ url: async (url) => {
 				const counts = {
 					total: findings.length,
 					confirmed: 0,
+					needsValidation: 0,
 					rejected: 0
 				};
 				for (const f of findings) if (isConfirmed(f)) counts.confirmed += 1;
+				else if (isBlocked(f)) counts.needsValidation += 1;
 				else counts.rejected += 1;
 				return counts;
 			}, [findings]);
@@ -662,13 +819,14 @@ url: async (url) => {
 			}, [findings]);
 			const filtered = (0, react.useMemo)(() => {
 				const q = query.trim().toLowerCase();
-				const rankOf = (f) => isConfirmed(f) ? SEVERITY_ORDER.indexOf(asSeverity(f.severity?.overall_severity)) : SEVERITY_ORDER.length;
+				const rankOf = (f) => isConfirmed(f) ? SEVERITY_ORDER.indexOf(asSeverity(f.severity?.overall_severity)) : isBlocked(f) ? SEVERITY_ORDER.length : SEVERITY_ORDER.length + 1;
 				return findings.filter((f) => {
 					if (verdict === "confirmed" && !isConfirmed(f)) return false;
-					if (verdict === "rejected" && isConfirmed(f)) return false;
+					if (verdict === "blocked" && !isBlocked(f)) return false;
+					if (verdict === "rejected" && (isConfirmed(f) || isBlocked(f))) return false;
 					if (isConfirmed(f) && sevFilter.size > 0 && !sevFilter.has(asSeverity(f.severity?.overall_severity))) return false;
 					if (q !== "") {
-						if (!(isConfirmed(f) ? `${f.title ?? ""} ${f.description ?? ""} ${f.root_cause ?? ""}` : `${f.title ?? ""} ${f.reason ?? ""}`).toLowerCase().includes(q)) return false;
+						if (!(isConfirmed(f) ? `${f.title ?? ""} ${f.description ?? ""} ${f.root_cause ?? ""}` : isBlocked(f) ? `${f.title ?? ""} ${f.description ?? ""} ${f.claimed_root_cause ?? ""} ${(f.blockers ?? []).join(" ")}` : `${f.title ?? ""} ${f.description ?? ""} ${f.claimed_root_cause ?? ""} ${f.reason ?? ""}`).toLowerCase().includes(q)) return false;
 					}
 					return true;
 				}).sort((a, b) => rankOf(a) - rankOf(b));
@@ -838,7 +996,7 @@ url: async (url) => {
 									children: [
 										r.repo !== "." ? `${r.repo} / ` : "",
 										r.name,
-										r.counts !== void 0 ? ` — ${r.counts.confirmed} confirmed / ${r.counts.rejected} rejected` : ""
+										r.counts !== void 0 ? ` — ${r.counts.confirmed} confirmed / ${r.counts.rejected} rejected${r.counts.needsValidation > 0 ? ` / ${r.counts.needsValidation} needs validation` : ""}` : ""
 									]
 								}, r.dir))
 							}),
@@ -873,6 +1031,10 @@ url: async (url) => {
 											className: "dsa-stat static",
 											children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("b", { children: clientCounts.confirmed }), "\xA0confirmed"]
 										}),
+										clientCounts.needsValidation > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+											className: "dsa-stat static",
+											children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("b", { children: clientCounts.needsValidation }), "\xA0needs validation"]
+										}),
 										/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 											className: "dsa-stat static",
 											children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("b", { children: clientCounts.rejected }), "\xA0rejected"]
@@ -906,6 +1068,11 @@ url: async (url) => {
 											className: `dsa-btn${verdict === "confirmed" ? " active" : ""}`,
 											onClick: () => setVerdict("confirmed"),
 											children: "Confirmed"
+										}),
+										/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+											className: `dsa-btn${verdict === "blocked" ? " active" : ""}`,
+											onClick: () => setVerdict("blocked"),
+											children: "Needs validation"
 										}),
 										/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 											className: `dsa-btn${verdict === "rejected" ? " active" : ""}`,

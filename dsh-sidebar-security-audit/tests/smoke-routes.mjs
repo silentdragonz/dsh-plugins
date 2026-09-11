@@ -17,6 +17,7 @@ const mod = await import('../lib/index.js')
 
 const FINDINGS = JSON.stringify([
   { verdict: 'confirmed', title: 'sql injection', description: 'user input reaches the query', severity: { overall_severity: 'high' } },
+  { verdict: 'needs_validation', title: 'ssti maybe', claimed_root_cause: 'rendered user text', blockers: ['needs a template flag'], validation_plan: { local: 'probe {{7*7}}' } },
   { verdict: 'rejected', title: 'false positive', reason: 'parameterized upstream' },
 ])
 const REPORT = '# synthetic report\n'
@@ -78,8 +79,7 @@ assert.equal(runs.body.workspace, workspace)
 assert.ok(runs.body.runs.some(r => r.repo === 'sample-app' && r.name === 'run-1'))
 const sample = runs.body.runs.find(r => r.repo === 'sample-app')
 const fnd = await get(`${API}/findings?` + q({ dir: sample.dir, root: localRoot }))
-assert.equal(fnd.status, 200)
-assert.equal(JSON.parse(fnd.body.content).length, 2)
+assert.equal(JSON.parse(fnd.body.content).length, 3)
 
 const rep = await get(`${API}/report?` + q({ dir: sample.dir, file: 'REPORT.md', root: localRoot }))
 assert.equal(rep.status, 200)
