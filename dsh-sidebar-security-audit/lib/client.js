@@ -449,6 +449,25 @@ window.__ModuleLoader__.load({
 			"FINDINGS-DETAIL.md",
 			"architecture.md"
 		];
+		/**
+		* Preferred default editors, in open-in-app catalog preference order. The
+		* probed catalog lists file managers first (finder/explorer/filemanager —
+		* xdg-open probes as installed on nearly every host), which is the wrong
+		* default for a file link; editors come first here, file managers last.
+		*/
+		const EDITOR_PRIORITY = [
+			"cursor",
+			"vscode",
+			"windsurf",
+			"vscodeinsiders",
+			"zed",
+			"sublimetext",
+			"xcode",
+			"androidstudio",
+			"finder",
+			"explorer",
+			"filemanager"
+		];
 		function loadStoredRoot() {
 			try {
 				return window.localStorage.getItem(ROOT_KEY) ?? "";
@@ -469,6 +488,11 @@ window.__ModuleLoader__.load({
 			} catch {
 				return "unknown";
 			}
+		}
+		/** The panel's default open-in-app app: the best probed editor, else the first probed app. */
+		function defaultOpenApp(apps) {
+			for (const id of EDITOR_PRIORITY) if (apps.includes(id)) return id;
+			return apps[0] ?? "";
 		}
 		function AuditPanel(props) {
 			const { scope, service, visible } = props;
@@ -623,7 +647,7 @@ window.__ModuleLoader__.load({
 				}
 				const slash = abs.lastIndexOf("/");
 				const dir = slash > 0 ? abs.slice(0, slash) : workspace;
-				const app = openChoice !== "" && openApps.includes(openChoice) ? openChoice : openApps[0] ?? "";
+				const app = openChoice !== "" && openApps.includes(openChoice) ? openChoice : defaultOpenApp(openApps);
 				if (app === "") return;
 				setOpenError("");
 				openInApp.launch(app, dir).catch((e) => {
@@ -693,7 +717,7 @@ window.__ModuleLoader__.load({
 									}),
 									openApps.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("select", {
 										className: "dsa-select",
-										value: openChoice !== "" && openApps.includes(openChoice) ? openChoice : openApps[0],
+										value: openChoice !== "" && openApps.includes(openChoice) ? openChoice : defaultOpenApp(openApps),
 										onChange: (e) => chooseOpenApp(e.target.value),
 										title: "Editor for finding file links (harness open-in-app)",
 										children: openApps.map((id) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("option", {

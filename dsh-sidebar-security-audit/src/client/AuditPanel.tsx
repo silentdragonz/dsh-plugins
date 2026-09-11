@@ -20,6 +20,16 @@ const ROOT_KEY = 'dsh-sidebar-security-audit:root'
 const OPEN_APP_KEY = 'dsh-sidebar-security-audit:open-app'
 /** Artifacts openable in the sidebar viewer (host-whitelisted). */
 const ARTIFACTS = ['REPORT.md', 'FINDINGS-DETAIL.md', 'architecture.md'] as const
+/**
+ * Preferred default editors, in open-in-app catalog preference order. The
+ * probed catalog lists file managers first (finder/explorer/filemanager —
+ * xdg-open probes as installed on nearly every host), which is the wrong
+ * default for a file link; editors come first here, file managers last.
+ */
+const EDITOR_PRIORITY: readonly string[] = [
+  'cursor', 'vscode', 'windsurf', 'vscodeinsiders', 'zed',
+  'sublimetext', 'xcode', 'androidstudio', 'finder', 'explorer', 'filemanager',
+]
 
 type VerdictFilter = 'all' | 'confirmed' | 'rejected'
 
@@ -51,6 +61,14 @@ export interface AuditPanelProps extends TabComponentProps {
   service: BetterSidebarService
 }
 
+
+/** The panel's default open-in-app app: the best probed editor, else the first probed app. */
+function defaultOpenApp(apps: readonly string[]): string {
+  for (const id of EDITOR_PRIORITY) {
+    if (apps.includes(id)) return id
+  }
+  return apps[0] ?? ''
+}
 export function AuditPanel(props: AuditPanelProps): ReactNode {
   const { scope, service, visible } = props
   const [rootDraft, setRootDraft] = useState<string>(loadStoredRoot)
@@ -219,7 +237,7 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
     }
     const slash = abs.lastIndexOf('/')
     const dir = slash > 0 ? abs.slice(0, slash) : workspace
-    const app = openChoice !== '' && openApps.includes(openChoice) ? openChoice : openApps[0] ?? ''
+    const app = openChoice !== '' && openApps.includes(openChoice) ? openChoice : defaultOpenApp(openApps)
     if (app === '') return
     setOpenError('')
     void openInApp.launch(app, dir).catch((e: unknown) => {
@@ -262,7 +280,7 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
           {openApps.length > 0 && (
             <select
               className="dsa-select"
-              value={openChoice !== '' && openApps.includes(openChoice) ? openChoice : openApps[0]}
+              value={openChoice !== '' && openApps.includes(openChoice) ? openChoice : defaultOpenApp(openApps)}
               onChange={e => chooseOpenApp(e.target.value)}
               title="Editor for finding file links (harness open-in-app)"
             >
