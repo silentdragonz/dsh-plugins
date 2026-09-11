@@ -18,7 +18,8 @@ Registers a **Security Audit** sidebar tab (shield icon) that:
   confirmed/rejected toggle, and free-text search. File refs inside findings (trace
   entry/sink paths, remediation file names) open the file's directory in your editor through
   the harness **open-in-app** routes (`dsh >= 0.1.5-rc.1`); a host without them renders the
-  refs inert.
+  refs inert. The launched app is your harness open-in-app choice, overridable per-panel via
+  the header select; without any remembered choice the best probed editor wins.
 - Renders each finding as a card: severity + confidence badges, description, root cause, the
   entrypoint→sink **trace**, exploitation conditions, execution (payloads / instructions /
   expected result), remediation and severity rationale. Rejected findings show the rejection reason.

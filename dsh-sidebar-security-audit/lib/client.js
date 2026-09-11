@@ -489,10 +489,30 @@ window.__ModuleLoader__.load({
 				return "unknown";
 			}
 		}
+		/** The harness open-in-app client store's localStorage key (JSON-stringified raw choice). */
+		const HARNESS_CHOICE_KEY = "dsh.open-in-app.choice";
+		/** The user's choice remembered by the harness open-in-app button ('' when unset). */
+		function loadHarnessChoice() {
+			try {
+				const raw = window.localStorage.getItem(HARNESS_CHOICE_KEY);
+				if (raw === null) return "";
+				const parsed = JSON.parse(raw);
+				return typeof parsed === "string" ? parsed : "";
+			} catch {
+				return "";
+			}
+		}
 		/** The panel's default open-in-app app: the best probed editor, else the first probed app. */
 		function defaultOpenApp(apps) {
 			for (const id of EDITOR_PRIORITY) if (apps.includes(id)) return id;
 			return apps[0] ?? "";
+		}
+		/** The app a file link launches: panel pick, then the harness's remembered choice, then the probed-editor default. */
+		function effectiveOpenApp(apps, panelChoice) {
+			if (panelChoice !== "" && apps.includes(panelChoice)) return panelChoice;
+			const harness = loadHarnessChoice();
+			if (harness !== "" && apps.includes(harness)) return harness;
+			return defaultOpenApp(apps);
 		}
 		function AuditPanel(props) {
 			const { scope, service, visible } = props;
@@ -647,7 +667,7 @@ window.__ModuleLoader__.load({
 				}
 				const slash = abs.lastIndexOf("/");
 				const dir = slash > 0 ? abs.slice(0, slash) : workspace;
-				const app = openChoice !== "" && openApps.includes(openChoice) ? openChoice : defaultOpenApp(openApps);
+				const app = effectiveOpenApp(openApps, openChoice);
 				if (app === "") return;
 				setOpenError("");
 				openInApp.launch(app, dir).catch((e) => {
@@ -717,7 +737,7 @@ window.__ModuleLoader__.load({
 									}),
 									openApps.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("select", {
 										className: "dsa-select",
-										value: openChoice !== "" && openApps.includes(openChoice) ? openChoice : defaultOpenApp(openApps),
+										value: effectiveOpenApp(openApps, openChoice),
 										onChange: (e) => chooseOpenApp(e.target.value),
 										title: "Editor for finding file links (harness open-in-app)",
 										children: openApps.map((id) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("option", {

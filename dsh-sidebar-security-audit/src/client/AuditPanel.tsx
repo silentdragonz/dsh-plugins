@@ -62,6 +62,21 @@ export interface AuditPanelProps extends TabComponentProps {
 }
 
 
+/** The harness open-in-app client store's localStorage key (JSON-stringified raw choice). */
+const HARNESS_CHOICE_KEY = 'dsh.open-in-app.choice'
+
+/** The user's choice remembered by the harness open-in-app button ('' when unset). */
+function loadHarnessChoice(): string {
+  try {
+    const raw = window.localStorage.getItem(HARNESS_CHOICE_KEY)
+    if (raw === null) return ''
+    const parsed: unknown = JSON.parse(raw)
+    return typeof parsed === 'string' ? parsed : ''
+  } catch {
+    return ''
+  }
+}
+
 /** The panel's default open-in-app app: the best probed editor, else the first probed app. */
 function defaultOpenApp(apps: readonly string[]): string {
   for (const id of EDITOR_PRIORITY) {
@@ -69,6 +84,15 @@ function defaultOpenApp(apps: readonly string[]): string {
   }
   return apps[0] ?? ''
 }
+
+/** The app a file link launches: panel pick, then the harness's remembered choice, then the probed-editor default. */
+function effectiveOpenApp(apps: readonly string[], panelChoice: string): string {
+  if (panelChoice !== '' && apps.includes(panelChoice)) return panelChoice
+  const harness = loadHarnessChoice()
+  if (harness !== '' && apps.includes(harness)) return harness
+  return defaultOpenApp(apps)
+}
+
 export function AuditPanel(props: AuditPanelProps): ReactNode {
   const { scope, service, visible } = props
   const [rootDraft, setRootDraft] = useState<string>(loadStoredRoot)
@@ -237,7 +261,7 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
     }
     const slash = abs.lastIndexOf('/')
     const dir = slash > 0 ? abs.slice(0, slash) : workspace
-    const app = openChoice !== '' && openApps.includes(openChoice) ? openChoice : defaultOpenApp(openApps)
+    const app = effectiveOpenApp(openApps, openChoice)
     if (app === '') return
     setOpenError('')
     void openInApp.launch(app, dir).catch((e: unknown) => {
@@ -280,7 +304,7 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
           {openApps.length > 0 && (
             <select
               className="dsa-select"
-              value={openChoice !== '' && openApps.includes(openChoice) ? openChoice : defaultOpenApp(openApps)}
+              value={effectiveOpenApp(openApps, openChoice)}
               onChange={e => chooseOpenApp(e.target.value)}
               title="Editor for finding file links (harness open-in-app)"
             >
