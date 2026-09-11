@@ -141,18 +141,23 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return findings.filter(f => {
-      if (verdict === 'confirmed' && !isConfirmed(f)) return false
-      if (verdict === 'rejected' && isConfirmed(f)) return false
-      if (isConfirmed(f) && sevFilter.size > 0 && !sevFilter.has(asSeverity(f.severity?.overall_severity))) return false
-      if (q !== '') {
-        const hay = isConfirmed(f)
-          ? `${f.title ?? ''} ${f.description ?? ''} ${f.root_cause ?? ''}`
-          : `${f.title ?? ''} ${f.reason ?? ''}`
-        if (!hay.toLowerCase().includes(q)) return false
-      }
-      return true
-    })
+    const rankOf = (f: Finding): number => isConfirmed(f)
+      ? SEVERITY_ORDER.indexOf(asSeverity(f.severity?.overall_severity))
+      : SEVERITY_ORDER.length // rejected always last
+    return findings
+      .filter(f => {
+        if (verdict === 'confirmed' && !isConfirmed(f)) return false
+        if (verdict === 'rejected' && isConfirmed(f)) return false
+        if (isConfirmed(f) && sevFilter.size > 0 && !sevFilter.has(asSeverity(f.severity?.overall_severity))) return false
+        if (q !== '') {
+          const hay = isConfirmed(f)
+            ? `${f.title ?? ''} ${f.description ?? ''} ${f.root_cause ?? ''}`
+            : `${f.title ?? ''} ${f.reason ?? ''}`
+          if (!hay.toLowerCase().includes(q)) return false
+        }
+        return true
+      })
+      .sort((a, b) => rankOf(a) - rankOf(b))
   }, [findings, verdict, sevFilter, query])
 
   const toggleSev = (sev: string): void => {

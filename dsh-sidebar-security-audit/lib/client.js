@@ -488,6 +488,7 @@ window.__ModuleLoader__.load({
 			}, [findings]);
 			const filtered = (0, react.useMemo)(() => {
 				const q = query.trim().toLowerCase();
+				const rankOf = (f) => isConfirmed(f) ? SEVERITY_ORDER.indexOf(asSeverity(f.severity?.overall_severity)) : SEVERITY_ORDER.length;
 				return findings.filter((f) => {
 					if (verdict === "confirmed" && !isConfirmed(f)) return false;
 					if (verdict === "rejected" && isConfirmed(f)) return false;
@@ -496,7 +497,7 @@ window.__ModuleLoader__.load({
 						if (!(isConfirmed(f) ? `${f.title ?? ""} ${f.description ?? ""} ${f.root_cause ?? ""}` : `${f.title ?? ""} ${f.reason ?? ""}`).toLowerCase().includes(q)) return false;
 					}
 					return true;
-				});
+				}).sort((a, b) => rankOf(a) - rankOf(b));
 			}, [
 				findings,
 				verdict,
