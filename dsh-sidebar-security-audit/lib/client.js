@@ -516,7 +516,7 @@ url: async (url) => {
 			},
 			zed: {
 				template: "zed://file/{path}",
-				lineTargeted: false
+				lineTargeted: true
 			}
 		};
 		function loadStoredRoot() {

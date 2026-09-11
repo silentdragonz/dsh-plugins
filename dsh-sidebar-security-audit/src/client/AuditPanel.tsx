@@ -39,7 +39,7 @@ const EDITOR_URL_SCHEMES: Readonly<Record<string, { template: string; lineTarget
   vscodeinsiders: { template: 'vscode-insiders://file/{path}', lineTargeted: true },
   cursor: { template: 'cursor://file/{path}', lineTargeted: true },
   windsurf: { template: 'windsurf://file/{path}', lineTargeted: true },
-  zed: { template: 'zed://file/{path}', lineTargeted: false },
+  zed: { template: 'zed://file/{path}', lineTargeted: true },
 }
 
 type VerdictFilter = 'all' | 'confirmed' | 'rejected'
