@@ -8,6 +8,7 @@ Collection of DeepSeek Harness (DSH) plugins. Each directory is a standalone pnp
 | `dsh-ina-theme` | Ina theme for DSH: eggplant-indigo surfaces with rose-magenta brand and amber highlights, plus a Settings page for Auto/Light/Dark variants |
 | `dsh-sidebar-security-audit` | `dsh-better-sidebar` panel for the cloudflare/security-audit skill: severity stats, finding cards, one-click report opening |
 | `dsh-phoenix-tracing` | Arize Phoenix tracing backend: projects session telemetry onto OpenInference spans and exports them over OTLP/HTTP |
+| `dsh-shtv` | Inline Playwright MCP screenshot card + Live Browser sidebar panel for the DSH web GUI; host serves workspace screenshots and a live frame pump over fenced loopback routes (`/api/dsh-shtv`) |
 
 ## Install
 
