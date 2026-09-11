@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { TabComponentProps, BetterSidebarService } from 'dsh-better-sidebar'
-import { api, openInApp } from './api.ts'
+import { api, openExternal, openInApp } from './api.ts'
 import { parseFindings, isConfirmed, type Finding, type RunInfo } from './types.ts'
 import { SEVERITY_ORDER, SEVERITY_COLORS, SEVERITY_LABELS, asSeverity } from './severity.ts'
 import { FindingCard } from './FindingCard.tsx'
@@ -16,8 +16,6 @@ import { injectStyles } from './styles.ts'
 
 /** localStorage key for the root override. */
 const ROOT_KEY = 'dsh-sidebar-security-audit:root'
-/** localStorage key for the open-in-app editor choice (probed app id). */
-const OPEN_APP_KEY = 'dsh-sidebar-security-audit:open-app'
 /** Artifacts openable in the sidebar viewer (host-whitelisted). */
 const ARTIFACTS = ['REPORT.md', 'FINDINGS-DETAIL.md', 'architecture.md'] as const
 /**
@@ -30,6 +28,19 @@ const EDITOR_PRIORITY: readonly string[] = [
   'cursor', 'vscode', 'windsurf', 'vscodeinsiders', 'zed',
   'sublimetext', 'xcode', 'androidstudio', 'finder', 'explorer', 'filemanager',
 ]
+/**
+ * File-targeting URL schemes for the editors that have one (templates mirror
+ * better-sidebar's own open-with built-ins). vscode-family URLs accept a
+ * `:{line}` suffix. Apps outside this map launch through harness open-in-app
+ * on the file's containing directory instead.
+ */
+const EDITOR_URL_SCHEMES: Readonly<Record<string, { template: string; lineTargeted: boolean }>> = {
+  vscode: { template: 'vscode://file/{path}', lineTargeted: true },
+  vscodeinsiders: { template: 'vscode-insiders://file/{path}', lineTargeted: true },
+  cursor: { template: 'cursor://file/{path}', lineTargeted: true },
+  windsurf: { template: 'windsurf://file/{path}', lineTargeted: true },
+  zed: { template: 'zed://file/{path}', lineTargeted: false },
+}
 
 type VerdictFilter = 'all' | 'confirmed' | 'rejected'
 
@@ -85,9 +96,12 @@ function defaultOpenApp(apps: readonly string[]): string {
   return apps[0] ?? ''
 }
 
-/** The app a file link launches: panel pick, then the harness's remembered choice, then the probed-editor default. */
-function effectiveOpenApp(apps: readonly string[], panelChoice: string): string {
-  if (panelChoice !== '' && apps.includes(panelChoice)) return panelChoice
+/**
+ * The app a file link launches — the harness open-in-app choice when it is
+ * probed, else the best probed editor. There is no panel-side picker: the
+ * choice lives in the harness open-in-app button.
+ */
+function resolveOpenApp(apps: readonly string[]): string {
   const harness = loadHarnessChoice()
   if (harness !== '' && apps.includes(harness)) return harness
   return defaultOpenApp(apps)
@@ -110,13 +124,6 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
   const [verdict, setVerdict] = useState<VerdictFilter>('all')
   const [query, setQuery] = useState('')
   const [openApps, setOpenApps] = useState<string[]>([])
-  const [openChoice, setOpenChoice] = useState<string>(() => {
-    try {
-      return window.localStorage.getItem(OPEN_APP_KEY) ?? ''
-    } catch {
-      return ''
-    }
-  })
   const [openError, setOpenError] = useState<string>('')
   useEffect(() => { injectStyles() }, [])
   // Probe the open-in-app catalog once; a host without the harness routes
@@ -235,21 +242,15 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
     setRoot(next)
   }
 
-  /** Remember the open-in-app editor choice (probed app id). */
-  const chooseOpenApp = (appId: string): void => {
-    setOpenChoice(appId)
-    try {
-      window.localStorage.setItem(OPEN_APP_KEY, appId)
-    } catch { /* storage unavailable */ }
-  }
-
   /**
-   * Launch the user's editor on the directory holding a finding's file ref.
-   * Trace paths are repo-relative (absolute and `./`-prefixed are honored);
-   * the harness open route takes directories only, so the file's parent
-   * directory is the target.
+   * Open a finding's file ref in the harness-selected editor. Trace paths
+   * are repo-relative (absolute and `./`-prefixed are honored). Editors with
+   * a file URL scheme (vscode family, zed) launch on the FILE itself through
+   * better-sidebar's open.external opener, line included when known; every
+   * other app (file managers) falls back to harness open-in-app on the
+   * file's containing directory.
    */
-  const openFileRef = useCallback((file: string): void => {
+  const openFileRef = useCallback((file: string, line?: number): void => {
     if (openApps.length === 0) return
     const clean = file.trim().replace(/^\.\//, '')
     const abs = clean !== '' && clean.startsWith('/')
@@ -259,15 +260,25 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
       setOpenError('file ref is relative but no workspace is known')
       return
     }
-    const slash = abs.lastIndexOf('/')
-    const dir = slash > 0 ? abs.slice(0, slash) : workspace
-    const app = effectiveOpenApp(openApps, openChoice)
+    const app = resolveOpenApp(openApps)
     if (app === '') return
     setOpenError('')
+    const scheme = EDITOR_URL_SCHEMES[app]
+    if (scheme !== undefined) {
+      const normalized = abs.replace(/\\/g, '/')
+      const target = scheme.lineTargeted && line !== undefined ? `${normalized}:${line}` : normalized
+      const url = scheme.template.replace('{path}', target)
+      void openExternal.url(url).catch((e: unknown) => {
+        setOpenError(e instanceof Error ? e.message : String(e))
+      })
+      return
+    }
+    const slash = abs.lastIndexOf('/')
+    const dir = slash > 0 ? abs.slice(0, slash) : workspace
     void openInApp.launch(app, dir).catch((e: unknown) => {
       setOpenError(e instanceof Error ? e.message : String(e))
     })
-  }, [openApps, openChoice, workspace])
+  }, [openApps, workspace])
 
   const openArtifact = (file: string): void => {
     if (selected === undefined) return
@@ -301,16 +312,6 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
             </button>
           )}
           <button className="dsa-btn" onClick={applyRoot}>Go</button>
-          {openApps.length > 0 && (
-            <select
-              className="dsa-select"
-              value={effectiveOpenApp(openApps, openChoice)}
-              onChange={e => chooseOpenApp(e.target.value)}
-              title="Editor for finding file links (harness open-in-app)"
-            >
-              {openApps.map(id => <option key={id} value={id}>{id}</option>)}
-            </select>
-          )}
         </div>
         <div className="dsa-hint">
           Scans <code>{serverRoot !== '' ? serverRoot : '…'}</code> — prefers the workspace's

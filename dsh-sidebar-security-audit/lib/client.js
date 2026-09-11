@@ -73,6 +73,31 @@ window.__ModuleLoader__.load({
 				}
 			}
 		};
+		/** better-sidebar's external-open wire route (the sidebar file tree's "open with" channel). */
+		const OPEN_EXTERNAL_ROUTE = "/sidebar/api/open.external";
+		const openExternal = { 
+		/**
+		* Hand a custom-scheme URL (vscode://file/<path>:<line> …) to the OS
+		* protocol handler via better-sidebar's host opener — the same channel
+		* the sidebar's own file tree uses, so the file itself opens in the
+		* editor (the harness open-in-app route only takes directories).
+		*/
+url: async (url) => {
+			const resp = await fetch(OPEN_EXTERNAL_ROUTE, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					action: "url",
+					url
+				})
+			});
+			const body = await resp.json().catch(() => void 0);
+			const okFlag = body !== null && typeof body === "object" && "ok" in body ? body.ok : void 0;
+			if (!resp.ok || okFlag !== true) {
+				const detail = body !== null && typeof body === "object" && "error" in body && body.error !== null && typeof body.error === "object" && "message" in body.error ? String(body.error.message) : `HTTP ${resp.status}`;
+				throw new Error(detail);
+			}
+		} };
 		//#endregion
 		//#region src/client/types.ts
 		function isConfirmed(finding) {
@@ -153,9 +178,9 @@ window.__ModuleLoader__.load({
 				className: "dsa-code-ref dsa-link",
 				onClick: (e) => {
 					e.stopPropagation();
-					props.onOpenFile?.(props.file);
+					props.onOpenFile?.(props.file, props.line);
 				},
-				title: `Open ${props.file} in the editor`,
+				title: `Open ${label} in the editor`,
 				children: label
 			});
 		}
@@ -441,8 +466,6 @@ window.__ModuleLoader__.load({
 		*/
 		/** localStorage key for the root override. */
 		const ROOT_KEY = "dsh-sidebar-security-audit:root";
-		/** localStorage key for the open-in-app editor choice (probed app id). */
-		const OPEN_APP_KEY = "dsh-sidebar-security-audit:open-app";
 		/** Artifacts openable in the sidebar viewer (host-whitelisted). */
 		const ARTIFACTS = [
 			"REPORT.md",
@@ -468,6 +491,34 @@ window.__ModuleLoader__.load({
 			"explorer",
 			"filemanager"
 		];
+		/**
+		* File-targeting URL schemes for the editors that have one (templates mirror
+		* better-sidebar's own open-with built-ins). vscode-family URLs accept a
+		* `:{line}` suffix. Apps outside this map launch through harness open-in-app
+		* on the file's containing directory instead.
+		*/
+		const EDITOR_URL_SCHEMES = {
+			vscode: {
+				template: "vscode://file/{path}",
+				lineTargeted: true
+			},
+			vscodeinsiders: {
+				template: "vscode-insiders://file/{path}",
+				lineTargeted: true
+			},
+			cursor: {
+				template: "cursor://file/{path}",
+				lineTargeted: true
+			},
+			windsurf: {
+				template: "windsurf://file/{path}",
+				lineTargeted: true
+			},
+			zed: {
+				template: "zed://file/{path}",
+				lineTargeted: false
+			}
+		};
 		function loadStoredRoot() {
 			try {
 				return window.localStorage.getItem(ROOT_KEY) ?? "";
@@ -507,9 +558,12 @@ window.__ModuleLoader__.load({
 			for (const id of EDITOR_PRIORITY) if (apps.includes(id)) return id;
 			return apps[0] ?? "";
 		}
-		/** The app a file link launches: panel pick, then the harness's remembered choice, then the probed-editor default. */
-		function effectiveOpenApp(apps, panelChoice) {
-			if (panelChoice !== "" && apps.includes(panelChoice)) return panelChoice;
+		/**
+		* The app a file link launches — the harness open-in-app choice when it is
+		* probed, else the best probed editor. There is no panel-side picker: the
+		* choice lives in the harness open-in-app button.
+		*/
+		function resolveOpenApp(apps) {
 			const harness = loadHarnessChoice();
 			if (harness !== "" && apps.includes(harness)) return harness;
 			return defaultOpenApp(apps);
@@ -531,13 +585,6 @@ window.__ModuleLoader__.load({
 			const [verdict, setVerdict] = (0, react.useState)("all");
 			const [query, setQuery] = (0, react.useState)("");
 			const [openApps, setOpenApps] = (0, react.useState)([]);
-			const [openChoice, setOpenChoice] = (0, react.useState)(() => {
-				try {
-					return window.localStorage.getItem(OPEN_APP_KEY) ?? "";
-				} catch {
-					return "";
-				}
-			});
 			const [openError, setOpenError] = (0, react.useState)("");
 			(0, react.useEffect)(() => {
 				injectStyles();
@@ -644,20 +691,15 @@ window.__ModuleLoader__.load({
 				storeRoot(next);
 				setRoot(next);
 			};
-			/** Remember the open-in-app editor choice (probed app id). */
-			const chooseOpenApp = (appId) => {
-				setOpenChoice(appId);
-				try {
-					window.localStorage.setItem(OPEN_APP_KEY, appId);
-				} catch {}
-			};
 			/**
-			* Launch the user's editor on the directory holding a finding's file ref.
-			* Trace paths are repo-relative (absolute and `./`-prefixed are honored);
-			* the harness open route takes directories only, so the file's parent
-			* directory is the target.
+			* Open a finding's file ref in the harness-selected editor. Trace paths
+			* are repo-relative (absolute and `./`-prefixed are honored). Editors with
+			* a file URL scheme (vscode family, zed) launch on the FILE itself through
+			* better-sidebar's open.external opener, line included when known; every
+			* other app (file managers) falls back to harness open-in-app on the
+			* file's containing directory.
 			*/
-			const openFileRef = (0, react.useCallback)((file) => {
+			const openFileRef = (0, react.useCallback)((file, line) => {
 				if (openApps.length === 0) return;
 				const clean = file.trim().replace(/^\.\//, "");
 				const abs = clean !== "" && clean.startsWith("/") ? clean : workspace !== "" && clean !== "" ? `${workspace}/${clean}` : "";
@@ -665,19 +707,25 @@ window.__ModuleLoader__.load({
 					setOpenError("file ref is relative but no workspace is known");
 					return;
 				}
-				const slash = abs.lastIndexOf("/");
-				const dir = slash > 0 ? abs.slice(0, slash) : workspace;
-				const app = effectiveOpenApp(openApps, openChoice);
+				const app = resolveOpenApp(openApps);
 				if (app === "") return;
 				setOpenError("");
+				const scheme = EDITOR_URL_SCHEMES[app];
+				if (scheme !== void 0) {
+					const normalized = abs.replace(/\\/g, "/");
+					const target = scheme.lineTargeted && line !== void 0 ? `${normalized}:${line}` : normalized;
+					const url = scheme.template.replace("{path}", target);
+					openExternal.url(url).catch((e) => {
+						setOpenError(e instanceof Error ? e.message : String(e));
+					});
+					return;
+				}
+				const slash = abs.lastIndexOf("/");
+				const dir = slash > 0 ? abs.slice(0, slash) : workspace;
 				openInApp.launch(app, dir).catch((e) => {
 					setOpenError(e instanceof Error ? e.message : String(e));
 				});
-			}, [
-				openApps,
-				openChoice,
-				workspace
-			]);
+			}, [openApps, workspace]);
 			const openArtifact = (file) => {
 				if (selected === void 0) return;
 				const path = `${selected.dir}/${file}`;
@@ -734,16 +782,6 @@ window.__ModuleLoader__.load({
 										className: "dsa-btn",
 										onClick: applyRoot,
 										children: "Go"
-									}),
-									openApps.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("select", {
-										className: "dsa-select",
-										value: effectiveOpenApp(openApps, openChoice),
-										onChange: (e) => chooseOpenApp(e.target.value),
-										title: "Editor for finding file links (harness open-in-app)",
-										children: openApps.map((id) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("option", {
-											value: id,
-											children: id
-										}, id))
 									})
 								]
 							}),

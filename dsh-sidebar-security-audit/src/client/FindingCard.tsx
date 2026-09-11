@@ -24,7 +24,7 @@ function Section(props: { title: string; defaultOpen?: boolean; children: ReactN
 function CodeRef(props: {
   file: string
   line?: number
-  onOpenFile?: ((file: string) => void) | undefined
+  onOpenFile?: ((file: string, line?: number) => void) | undefined
 }): ReactNode {
   const label = `${props.file}${props.line !== undefined ? `:${props.line}` : ''}`
   if (props.onOpenFile === undefined) return <span className="dsa-code-ref">{label}</span>
@@ -32,15 +32,15 @@ function CodeRef(props: {
     <button
       type="button"
       className="dsa-code-ref dsa-link"
-      onClick={e => { e.stopPropagation(); props.onOpenFile?.(props.file) }}
-      title={`Open ${props.file} in the editor`}
+      onClick={e => { e.stopPropagation(); props.onOpenFile?.(props.file, props.line) }}
+      title={`Open ${label} in the editor`}
     >
       {label}
     </button>
   )
 }
 
-function TraceList(props: { steps: TraceStep[]; onOpenFile?: (file: string) => void }): ReactNode {
+function TraceList(props: { steps: TraceStep[]; onOpenFile?: (file: string, line?: number) => void }): ReactNode {
   return (
     <ol className="dsa-trace">
       {props.steps.map((step, i) => (
@@ -60,8 +60,8 @@ function TraceList(props: { steps: TraceStep[]; onOpenFile?: (file: string) => v
 export interface FindingCardProps {
   finding: Finding
   index: number
-  /** Launches the file's directory in the open-in-app editor (undefined = inert refs). */
-  onOpenFile?: (file: string) => void
+  /** Opens the file (line included when known) in the harness-selected editor; undefined = inert refs. */
+  onOpenFile?: (file: string, line?: number) => void
 }
 
 export function FindingCard(props: FindingCardProps): ReactNode {

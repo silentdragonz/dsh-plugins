@@ -73,3 +73,31 @@ export const openInApp = {
     }
   },
 }
+
+/** better-sidebar's external-open wire route (the sidebar file tree's "open with" channel). */
+const OPEN_EXTERNAL_ROUTE = '/sidebar/api/open.external'
+
+export const openExternal = {
+  /**
+   * Hand a custom-scheme URL (vscode://file/<path>:<line> …) to the OS
+   * protocol handler via better-sidebar's host opener — the same channel
+   * the sidebar's own file tree uses, so the file itself opens in the
+   * editor (the harness open-in-app route only takes directories).
+   */
+  url: async (url: string): Promise<void> => {
+    const resp = await fetch(OPEN_EXTERNAL_ROUTE, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'url', url }),
+    })
+    const body: unknown = await resp.json().catch(() => undefined)
+    const okFlag = body !== null && typeof body === 'object' && 'ok' in body ? body.ok : undefined
+    if (!resp.ok || okFlag !== true) {
+      const detail = body !== null && typeof body === 'object' && 'error' in body
+        && body.error !== null && typeof body.error === 'object' && 'message' in body.error
+        ? String(body.error.message)
+        : `HTTP ${resp.status}`
+      throw new Error(detail)
+    }
+  },
+}
