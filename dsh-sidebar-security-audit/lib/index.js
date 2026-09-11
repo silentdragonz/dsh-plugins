@@ -277,8 +277,12 @@ async function defaultAuditRoot(workspace, fallbackAbs) {
 */
 /** Plugin identity for the cordis patch row. */
 const name = "dsh-sidebar-security-audit";
-/** Services required before mounting. */
-const inject = ["webServer", "webRuntime"];
+/** Services required before mounting. `sessions` backs workspace cwd discovery. */
+const inject = [
+	"webServer",
+	"webRuntime",
+	"sessions"
+];
 /** The route family prefix. */
 const API_PREFIX = "/api/dsh-sidebar-security-audit";
 function writeJson(res, status, body) {

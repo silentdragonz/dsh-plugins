@@ -26,8 +26,8 @@ export { scanRuns, readRunFile, resolveInside, isSafeInside, summarizeFindings }
 /** Plugin identity for the cordis patch row. */
 export const name = 'dsh-sidebar-security-audit'
 
-/** Services required before mounting. */
-export const inject = ['webServer', 'webRuntime']
+/** Services required before mounting. `sessions` backs workspace cwd discovery. */
+export const inject = ['webServer', 'webRuntime', 'sessions']
 
 /** Optional plugin config (cordis patch row `config:`). */
 export interface PluginSettings {

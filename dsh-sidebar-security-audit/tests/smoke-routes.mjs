@@ -46,6 +46,9 @@ mod.apply(ctx)
 assert.ok(route, 'route registered')
 assert.equal(route.kind, 'prefix')
 assert.equal(route.path, '/api/dsh-sidebar-security-audit')
+// cordis refuses property access to undeclared services: sessions backs
+// workspace cwd discovery and MUST stay declared in inject.
+assert.ok(mod.inject.includes('sessions'), 'inject declares sessions')
 
 const server = http.createServer((req, res) => route.handler(req, res))
 await new Promise(r => server.listen(0, '127.0.0.1', r))
