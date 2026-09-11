@@ -1,0 +1,20 @@
+# dsh-codegraph-follow-workspace bundle patch.
+#
+# Applied when this package joins a profile's `dsh.profile.bundles` layer
+# stack — which `dsh plugin --profile <name> add` does automatically, because
+# this package.json declares `dsh.bundle.patch`. The inserted row mounts the
+# plugin, which registers the codegraph_explore tool.
+#
+# The row carries no config here: every field has a schema default in
+# lib/index.js (binPath, defaultCwd, timeouts, pool size). Per-deployment
+# overrides go in the profile's own cordis.patch.yml, targeting this row id:
+#
+#   - id: codegraph-follow-workspace
+#     config:
+#       binPath: /usr/local/bin/codegraph
+#       defaultCwd: /srv/repo
+#
+# Only override what must differ; the rest keeps its schema default.
+- insert:
+    - id: codegraph-follow-workspace
+      name: dsh-codegraph-follow-workspace
