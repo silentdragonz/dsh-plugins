@@ -1,0 +1,22 @@
+{
+  "name": "dsh-shtv",
+  "version": "1.1.2",
+  "description": "Inline Playwright MCP screenshot card + Live Browser sidebar panel for the DSH web GUI. Host serves workspace screenshots and a live frame pump feed over fenced loopback routes (/api/dsh-shtv); the client registers the tool.call.toolview card for mcp__browser__browser_take_screenshot and a dsh-better-sidebar Live Browser tab.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": { "default": "./lib/client.js" },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": { "inject": [], "platform": "web" }
+  },
+  "peerDependencies": {
+    "react": "^18.2.0"
+  },
+  "engines": { "node": ">=20" },
+  "files": ["lib", "cordis.patch.yml", "README.md"],
+  "license": "MIT"
+}

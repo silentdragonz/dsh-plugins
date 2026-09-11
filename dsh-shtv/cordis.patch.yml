@@ -1,0 +1,9 @@
+# dsh-shtv bundle patch
+#
+# Inserted into the loader tree when the package is listed in the profile's
+# dsh.profile.bundles (or installed via `dsh plugin --profile web add`).
+# Host row only; the browser half is picked up from the package's ./client
+# export via the package.json "dsh.client" manifest.
+- insert:
+    - id: shtv
+      name: 'dsh-shtv'
