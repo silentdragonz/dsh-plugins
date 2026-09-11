@@ -1,6 +1,6 @@
 {
   "id": "dsh-sidebar-security-audit",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "main": "./lib/index.js",
   "description": "Security-audit results panel for dsh-better-sidebar: parses findings.json audit runs and renders them in a sidebar tab.",
   "engines": {
