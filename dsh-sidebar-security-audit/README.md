@@ -9,9 +9,10 @@ DSH web sidebar.
 
 Registers a **Security Audit** sidebar tab (shield icon) that:
 
-- Scans an audit root — default `/workspace/workspace/security-audit-skill` — for runs laid out as
-  `<root>/<repo>/run-<N>/` (any directory holding `findings.json` / `REPORT.md` /
-  `FINDINGS-DETAIL.md` / `architecture.md` counts as a run).
+- Scans an audit root for runs laid out as `<root>/<repo>/run-<N>/` (any directory holding
+  `findings.json` / `REPORT.md` / `FINDINGS-DETAIL.md` / `architecture.md` counts as a run).
+  The default root prefers the workspace's `.security-audit` folder and falls back to
+  `~/security-audit-skill` (both customizable — see Configuration).
 - Selects a run and parses its `findings.json` into **confirmed / rejected** findings.
 - Shows severity stats (critical/high/medium/low/informational chips, click to filter), a
   confirmed/rejected toggle, and free-text search.
@@ -20,8 +21,9 @@ Registers a **Security Audit** sidebar tab (shield icon) that:
   expected result), remediation and severity rationale. Rejected findings show the rejection reason.
 - Opens `REPORT.md` / `FINDINGS-DETAIL.md` / `architecture.md` in the sidebar's built-in markdown
   viewer via better-sidebar's `openFile` service call.
-- Lets you point the scan at a different root (persisted in localStorage), defaulting back to the
-  server-side root at any time.
+- Lets you point the scan at a different root via the input box (persisted in localStorage):
+  absolute paths, `~/…`, or workspace-relative. A nonexistent root reports an explicit error;
+  the Default button returns to the server-side root.
 
 ## Security model
 
@@ -29,20 +31,29 @@ The host half serves one fenced, **read-only** route family:
 
 | Route | Purpose |
 |---|---|
-| `GET /api/dsh-sidebar-security-audit/health` | effective root/base |
+| `GET /api/dsh-sidebar-security-audit/health` | effective audit root |
 | `GET /api/dsh-sidebar-security-audit/runs?root=` | run discovery + findings.json summary |
-| `GET /api/dsh-sidebar-security-audit/findings?dir=` | raw findings.json for a run |
-| `GET /api/dsh-sidebar-security-audit/report?dir=&file=` | whitelisted artifact text |
+| `GET /api/dsh-sidebar-security-audit/findings?dir=&root=` | raw findings.json for a run |
+| `GET /api/dsh-sidebar-security-audit/report?dir=&file=&root=` | whitelisted artifact text |
 
 - Same browser-trust fence as the DSH `/api` gateway (loopback/trusted Host, cross-site refusal).
-- Every path must resolve inside the **base** directory (default `/workspace/workspace`); symlink
-  escapes are refused via realpath containment. Only the four artifact filenames are readable.
+- Every served path must resolve inside the **audit root in use**; symlink escapes are refused
+  via realpath containment. Only the four artifact filenames are readable.
 
-## Why /workspace/workspace?
+## Where does the root come from?
 
-The upstream skill defaults its output to `~/security-audit-skill/…`; in this container the global
-home is **not writable**, so the installed skill's default output root is patched to
-`/workspace/workspace/security-audit-skill/<repo>/run-<N>` and this panel reads exactly there.
+Resolution order, most specific first:
+
+1. **Panel override** — the input box (absolute, `~/…`, or workspace-relative; must be an
+   existing directory).
+2. **`auditRoot` config** — pins the root outright.
+3. **`<workspace>/.security-audit`** — used when that folder exists in the live workspace
+   (session cwd).
+4. **`fallbackRoot` config** (default `~/security-audit-skill`) — the upstream skill's default
+   output root.
+
+The upstream skill defaults its output to `~/security-audit-skill/…`; in a container where the
+global home is not writable, point `fallbackRoot` (or `auditRoot`) at the writable workspace.
 
 ## Configuration (optional)
 
@@ -51,8 +62,10 @@ On the cordis patch row (profile `cordis.patch.yml`):
 ```yaml
 - id: security-audit-panel
   config:
-    auditRoot: /workspace/workspace/security-audit-skill
-    base: /workspace/workspace
+    # optional: pin the root outright (~ and relative paths are expanded)
+    # auditRoot: /workspace/workspace/security-audit-skill
+    # optional: fallback when the workspace has no .security-audit
+    # fallbackRoot: /workspace/workspace/security-audit-skill   # default ~/security-audit-skill
 ```
 
 ## Layout

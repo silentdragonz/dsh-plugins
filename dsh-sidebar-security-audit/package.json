@@ -1,7 +1,7 @@
 {
   "name": "dsh-sidebar-security-audit",
   "version": "0.2.0",
-  "description": "dsh-better-sidebar panel for the cloudflare/security-audit skill: discovers audit runs under /workspace/workspace, parses findings.json (report-schema.json shape), and renders severity stats, confirmed/rejected finding cards, and one-click report opening.",
+  "description": "dsh-better-sidebar panel for the cloudflare/security-audit skill: discovers audit runs under the workspace's .security-audit or ~/security-audit-skill, parses findings.json (report-schema.json shape), and renders severity stats, confirmed/rejected finding cards, and one-click report opening.",
   "type": "module",
   "engines": {
     "node": ">=20"

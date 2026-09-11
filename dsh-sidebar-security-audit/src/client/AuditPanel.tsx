@@ -78,6 +78,7 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       setRuns([])
+      setSelectedDir('')
     } finally {
       setLoadingRuns(false)
     }
@@ -97,13 +98,13 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
 
   useEffect(() => {
     let cancelled = false
-    if (selectedDir === '') {
+    if (selectedDir === '' || serverRoot === '') {
       setFindings([])
       setParseError('')
       return
     }
     setLoadingFindings(true)
-    api.findings(selectedDir)
+    api.findings(selectedDir, serverRoot)
       .then(resp => {
         if (cancelled) return
         const parsed = parseFindings(resp.content)
@@ -117,7 +118,7 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
       })
       .finally(() => { if (!cancelled) setLoadingFindings(false) })
     return () => { cancelled = true }
-  }, [selectedDir])
+  }, [selectedDir, serverRoot])
 
   const clientCounts = useMemo(() => {
     const counts = { total: findings.length, confirmed: 0, rejected: 0 }
@@ -189,11 +190,11 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
           <input
             className="dsa-root-input"
             value={rootDraft}
-            placeholder={serverRoot !== '' ? serverRoot : '/workspace/workspace/security-audit-skill'}
+            placeholder={serverRoot !== '' ? serverRoot : '~/security-audit-skill'}
             onChange={e => setRootDraft(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') applyRoot() }}
             spellCheck={false}
-            title="Audit root directory (under /workspace/workspace)"
+            title="Audit root directory (absolute, ~/…, or relative to the workspace)"
           />
           {root !== '' && (
             <button className="dsa-btn" onClick={() => { setRootDraft(''); storeRoot(''); setRoot('') }} title="Back to server default">
@@ -203,8 +204,8 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
           <button className="dsa-btn" onClick={applyRoot}>Go</button>
         </div>
         <div className="dsa-hint">
-          Scans <code>{serverRoot !== '' ? serverRoot : '…'}</code> — the skill's default output root
-          (writable workspace; the global ~ dir is not writable here).
+          Scans <code>{serverRoot !== '' ? serverRoot : '…'}</code> — prefers the workspace's
+          .security-audit folder, else the skill's default output root.
         </div>
       </div>
 

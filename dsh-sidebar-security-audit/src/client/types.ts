@@ -87,7 +87,6 @@ export interface RunInfo {
 
 export interface RunsResponse {
   root: string
-  base: string
   runs: RunInfo[]
 }
 

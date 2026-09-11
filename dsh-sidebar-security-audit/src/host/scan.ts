@@ -2,19 +2,21 @@
  * Audit-run discovery and reading for the security-audit panel (host side).
  *
  * Discovers cloudflare/security-audit skill runs — directories containing
- * findings.json / REPORT.md / FINDINGS-DETAIL.md / architecture.md — under a
- * root directory (default /workspace/workspace/security-audit-skill, the
- * skill's default output root in this deployment). Every resolved path must
- * stay inside the configured base (default /workspace/workspace); symlinked
- * escapes are refused via realpath containment of the existing ancestor.
+ * findings.json / REPORT.md / FINDINGS-DETAIL.md / architecture.md — under an
+ * audit root directory. The default root prefers a workspace-local
+ * .security-audit folder and falls back to the skill's default output root
+ * (~/security-audit-skill). Containment is relative to the audit root in
+ * use: every resolved path must stay inside it; symlinked escapes are
+ * refused via realpath containment of the existing ancestor.
  */
 import * as fs from 'node:fs/promises'
+import * as os from 'node:os'
 import * as path from 'node:path'
 
-/** Default containment base — every served path lives under this directory. */
-export const DEFAULT_BASE = '/workspace/workspace'
-/** Default audit root (the security-audit skill's default output root here). */
-export const DEFAULT_ROOT = '/workspace/workspace/security-audit-skill'
+/** Workspace-local audit root folder the panel prefers when present. */
+export const LOCAL_AUDIT_DIR = '.security-audit'
+/** Fallback audit root (the skill's default output root, ~-expanded at use). */
+export const FALLBACK_ROOT = '~/security-audit-skill'
 
 /** File names a run directory may contain; also the read whitelist. */
 export const RUN_FILES = ['findings.json', 'REPORT.md', 'FINDINGS-DETAIL.md', 'architecture.md'] as const
@@ -218,4 +220,25 @@ export async function readRunFile(dir: string, file: string): Promise<TextFileRe
   } finally {
     await handle.close()
   }
+}
+
+/** Expand a configured/requested root: `~` → home, relative → against the workspace. */
+export function expandRoot(raw: string, workspace: string): string {
+  const home = os.homedir()
+  if (raw === '~') return home
+  if (raw.startsWith('~/') || raw.startsWith('~\\')) return path.resolve(home, raw.slice(2))
+  return path.resolve(workspace, raw)
+}
+
+
+/**
+ * Default audit root: the workspace-local .security-audit folder when it
+ * exists, else the (absolute) fallback root.
+ */
+export async function defaultAuditRoot(workspace: string, fallbackAbs: string): Promise<string> {
+  const local = path.join(workspace, LOCAL_AUDIT_DIR)
+  try {
+    if ((await fs.stat(local)).isDirectory()) return local
+  } catch { /* not present */ }
+  return fallbackAbs
 }

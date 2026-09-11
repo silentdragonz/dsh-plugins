@@ -1,5 +1,6 @@
-import * as path from "node:path";
 import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 //#region src/host/fence.ts
 function header(headers, name) {
 	const value = headers[name];
@@ -49,16 +50,17 @@ function isTrustedApiRequest(request, trustedHosts) {
 * Audit-run discovery and reading for the security-audit panel (host side).
 *
 * Discovers cloudflare/security-audit skill runs — directories containing
-* findings.json / REPORT.md / FINDINGS-DETAIL.md / architecture.md — under a
-* root directory (default /workspace/workspace/security-audit-skill, the
-* skill's default output root in this deployment). Every resolved path must
-* stay inside the configured base (default /workspace/workspace); symlinked
-* escapes are refused via realpath containment of the existing ancestor.
+* findings.json / REPORT.md / FINDINGS-DETAIL.md / architecture.md — under an
+* audit root directory. The default root prefers a workspace-local
+* .security-audit folder and falls back to the skill's default output root
+* (~/security-audit-skill). Containment is relative to the audit root in
+* use: every resolved path must stay inside it; symlinked escapes are
+* refused via realpath containment of the existing ancestor.
 */
-/** Default containment base — every served path lives under this directory. */
-const DEFAULT_BASE = "/workspace/workspace";
-/** Default audit root (the security-audit skill's default output root here). */
-const DEFAULT_ROOT = "/workspace/workspace/security-audit-skill";
+/** Workspace-local audit root folder the panel prefers when present. */
+const LOCAL_AUDIT_DIR = ".security-audit";
+/** Fallback audit root (the skill's default output root, ~-expanded at use). */
+const FALLBACK_ROOT = "~/security-audit-skill";
 /** File names a run directory may contain; also the read whitelist. */
 const RUN_FILES = [
 	"findings.json",
@@ -239,6 +241,24 @@ async function readRunFile(dir, file) {
 		await handle.close();
 	}
 }
+/** Expand a configured/requested root: `~` → home, relative → against the workspace. */
+function expandRoot(raw, workspace) {
+	const home = os.homedir();
+	if (raw === "~") return home;
+	if (raw.startsWith("~/") || raw.startsWith("~\\")) return path.resolve(home, raw.slice(2));
+	return path.resolve(workspace, raw);
+}
+/**
+* Default audit root: the workspace-local .security-audit folder when it
+* exists, else the (absolute) fallback root.
+*/
+async function defaultAuditRoot(workspace, fallbackAbs) {
+	const local = path.join(workspace, LOCAL_AUDIT_DIR);
+	try {
+		if ((await fs.stat(local)).isDirectory()) return local;
+	} catch {}
+	return fallbackAbs;
+}
 //#endregion
 //#region src/index.ts
 /**
@@ -247,10 +267,12 @@ async function readRunFile(dir, file) {
 * dsh-better-sidebar panel discover and read cloudflare/security-audit skill
 * runs — findings.json, REPORT.md, FINDINGS-DETAIL.md, architecture.md.
 *
-* Default audit root: /workspace/workspace/security-audit-skill (the skill's
-* default output root in this deployment — the global ~ directory is not
-* writable here). Every served path is contained inside the base directory
-* (default /workspace/workspace), with symlink-escape refusal.
+* Default audit root: the live workspace's .security-audit folder when it
+* exists, else the skill's default output root (~/security-audit-skill;
+* customizable via fallbackRoot / auditRoot config). An explicit root
+* override (panel input; ~-, or workspace-relative) must be an existing
+* directory. Every served path is contained inside the audit root in use,
+* with symlink-escape refusal.
 * @module dsh-sidebar-security-audit
 */
 /** Plugin identity for the cordis patch row. */
@@ -269,61 +291,82 @@ function writeJson(res, status, body) {
 }
 function resolvedSettings(ctx) {
 	const cfg = ctx.plugin?.config ?? {};
-	const auditRoot = typeof cfg.auditRoot === "string" && cfg.auditRoot !== "" ? cfg.auditRoot : DEFAULT_ROOT;
 	return {
-		auditRoot,
-		base: typeof cfg.base === "string" && cfg.base !== "" ? cfg.base : auditRoot === "/workspace/workspace/security-audit-skill" ? DEFAULT_BASE : path.dirname(auditRoot)
+		auditRoot: typeof cfg.auditRoot === "string" && cfg.auditRoot !== "" ? cfg.auditRoot : "",
+		fallbackRoot: typeof cfg.fallbackRoot === "string" && cfg.fallbackRoot !== "" ? cfg.fallbackRoot : FALLBACK_ROOT
 	};
 }
-/** Resolve a requested path parameter inside the base, or refuse. */
-async function guardedDir(base, raw, res) {
+/**
+* Workspace the panel treats as local: the live session cwd when the host
+* exposes sessions (initiator first, then any session), else the process cwd.
+*/
+function currentWorkspace(ctx) {
+	const initiator = (ctx.get?.("agents"))?.currentInitiator?.();
+	const cwd = (initiator !== void 0 && initiator.id !== void 0 ? ctx.sessions?.get?.(initiator.id) : void 0)?.header?.cwd ?? ctx.sessions?.list?.().find((s) => s?.header?.cwd !== void 0)?.header?.cwd;
+	return cwd !== void 0 && cwd !== "" ? cwd : process.cwd();
+}
+/** Resolve a requested run directory inside the audit root, or refuse. */
+async function guardedDir(auditRoot, raw, res) {
 	if (raw === null || raw === "") {
 		writeJson(res, 400, { error: "missing dir parameter" });
 		return null;
 	}
-	const abs = resolveInside(base, raw);
-	if (abs === null) {
-		writeJson(res, 403, { error: "path outside the allowed base directory" });
+	const dir = resolveInside(auditRoot, raw);
+	if (dir === null) {
+		writeJson(res, 403, { error: "run directory outside the audit root" });
 		return null;
 	}
-	if (!await isSafeInside(base, abs)) {
-		writeJson(res, 403, { error: "path fails containment check (symlink escape?)" });
+	if (!await isSafeInside(auditRoot, dir)) {
+		writeJson(res, 403, { error: "run directory fails containment check (symlink escape?)" });
 		return null;
 	}
-	return abs;
+	return dir;
 }
 async function handleRequest(ctx, req, res) {
 	const url = new URL(req.url ?? "/", "http://localhost");
 	const sub = url.pathname.slice(31) || "/";
-	const { auditRoot, base } = resolvedSettings(ctx);
+	const workspace = currentWorkspace(ctx);
+	const settings = resolvedSettings(ctx);
+	const defaultRoot = settings.auditRoot !== "" ? expandRoot(settings.auditRoot, workspace) : await defaultAuditRoot(workspace, expandRoot(settings.fallbackRoot, workspace));
 	if (sub === "/health") {
 		writeJson(res, 200, {
 			ok: true,
-			root: auditRoot,
-			base
+			root: defaultRoot
 		});
 		return;
 	}
 	if (sub === "/runs") {
-		const requested = url.searchParams.get("root");
-		const root = requested !== null && requested !== "" ? resolveInside(base, requested) : resolveInside(base, auditRoot);
-		if (root === null) {
-			writeJson(res, 403, { error: "root outside the allowed base directory" });
+		const requested = url.searchParams.get("root") ?? "";
+		if (requested === "") {
+			writeJson(res, 200, {
+				root: defaultRoot,
+				runs: await scanRuns(defaultRoot)
+			});
 			return;
 		}
-		if (!await isSafeInside(base, root)) {
-			writeJson(res, 403, { error: "root fails containment check (symlink escape?)" });
+		const root = expandRoot(requested, workspace);
+		try {
+			if (!(await fs.stat(root)).isDirectory()) {
+				writeJson(res, 400, { error: `audit root is not a directory: ${root}` });
+				return;
+			}
+		} catch {
+			writeJson(res, 400, { error: `audit root does not exist: ${root}` });
 			return;
 		}
 		writeJson(res, 200, {
 			root,
-			base,
 			runs: await scanRuns(root)
 		});
 		return;
 	}
 	if (sub === "/findings" || sub === "/report") {
-		const dir = await guardedDir(base, url.searchParams.get("dir"), res);
+		const rootParam = url.searchParams.get("root");
+		if (rootParam === null || rootParam === "") {
+			writeJson(res, 400, { error: "missing root parameter" });
+			return;
+		}
+		const dir = await guardedDir(expandRoot(rootParam, workspace), url.searchParams.get("dir"), res);
 		if (dir === null) return;
 		const file = sub === "/findings" ? "findings.json" : url.searchParams.get("file");
 		if (file === null || file === "") {
@@ -374,4 +417,4 @@ function apply(ctx) {
 	}, "dsh-sidebar-security-audit: routes");
 }
 //#endregion
-export { API_PREFIX, DEFAULT_BASE, DEFAULT_ROOT, apply, inject, isSafeInside, name, readRunFile, resolveInside, scanRuns, summarizeFindings };
+export { API_PREFIX, apply, inject, isSafeInside, name, readRunFile, resolveInside, scanRuns, summarizeFindings };

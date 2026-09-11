@@ -24,12 +24,16 @@ window.__ModuleLoader__.load({
 		const api = {
 			/** List audit runs (default root when omitted). */
 			runs: (root) => getJson("/runs", root !== void 0 && root !== "" ? { root } : {}),
-			/** Raw findings.json content for one run directory. */
-			findings: (dir) => getJson("/findings", { dir }),
-			/** Raw text of one whitelisted artifact file (REPORT.md etc.). */
-			report: (dir, file) => getJson("/report", {
+			/** Raw findings.json content for one run directory (contained in `root`). */
+			findings: (dir, root) => getJson("/findings", {
 				dir,
-				file
+				root
+			}),
+			/** Raw text of one whitelisted artifact file (REPORT.md etc.). */
+			report: (dir, file, root) => getJson("/report", {
+				dir,
+				file,
+				root
 			})
 		};
 		//#endregion
@@ -427,6 +431,7 @@ window.__ModuleLoader__.load({
 				} catch (e) {
 					setError(e instanceof Error ? e.message : String(e));
 					setRuns([]);
+					setSelectedDir("");
 				} finally {
 					setLoadingRuns(false);
 				}
@@ -440,13 +445,13 @@ window.__ModuleLoader__.load({
 			const selected = (0, react.useMemo)(() => runs.find((r) => r.dir === selectedDir), [runs, selectedDir]);
 			(0, react.useEffect)(() => {
 				let cancelled = false;
-				if (selectedDir === "") {
+				if (selectedDir === "" || serverRoot === "") {
 					setFindings([]);
 					setParseError("");
 					return;
 				}
 				setLoadingFindings(true);
-				api.findings(selectedDir).then((resp) => {
+				api.findings(selectedDir, serverRoot).then((resp) => {
 					if (cancelled) return;
 					const parsed = parseFindings(resp.content);
 					setFindings(parsed.findings);
@@ -461,7 +466,7 @@ window.__ModuleLoader__.load({
 				return () => {
 					cancelled = true;
 				};
-			}, [selectedDir]);
+			}, [selectedDir, serverRoot]);
 			const clientCounts = (0, react.useMemo)(() => {
 				const counts = {
 					total: findings.length,
@@ -545,13 +550,13 @@ window.__ModuleLoader__.load({
 									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("input", {
 										className: "dsa-root-input",
 										value: rootDraft,
-										placeholder: serverRoot !== "" ? serverRoot : "/workspace/workspace/security-audit-skill",
+										placeholder: serverRoot !== "" ? serverRoot : "~/security-audit-skill",
 										onChange: (e) => setRootDraft(e.target.value),
 										onKeyDown: (e) => {
 											if (e.key === "Enter") applyRoot();
 										},
 										spellCheck: false,
-										title: "Audit root directory (under /workspace/workspace)"
+										title: "Audit root directory (absolute, ~/…, or relative to the workspace)"
 									}),
 									root !== "" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 										className: "dsa-btn",
@@ -575,7 +580,7 @@ window.__ModuleLoader__.load({
 								children: [
 									"Scans ",
 									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("code", { children: serverRoot !== "" ? serverRoot : "…" }),
-									" — the skill's default output root (writable workspace; the global ~ dir is not writable here)."
+									" — prefers the workspace's .security-audit folder, else the skill's default output root."
 								]
 							})
 						]

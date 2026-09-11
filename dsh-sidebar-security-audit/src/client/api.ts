@@ -26,10 +26,10 @@ export const api = {
   /** List audit runs (default root when omitted). */
   runs: (root?: string): Promise<RunsResponse> =>
     getJson<RunsResponse>('/runs', root !== undefined && root !== '' ? { root } : {}),
-  /** Raw findings.json content for one run directory. */
-  findings: (dir: string): Promise<TextFileResponse> =>
-    getJson<TextFileResponse>('/findings', { dir }),
+  /** Raw findings.json content for one run directory (contained in `root`). */
+  findings: (dir: string, root: string): Promise<TextFileResponse> =>
+    getJson<TextFileResponse>('/findings', { dir, root }),
   /** Raw text of one whitelisted artifact file (REPORT.md etc.). */
-  report: (dir: string, file: string): Promise<TextFileResponse> =>
-    getJson<TextFileResponse>('/report', { dir, file }),
+  report: (dir: string, file: string, root: string): Promise<TextFileResponse> =>
+    getJson<TextFileResponse>('/report', { dir, file, root }),
 }
