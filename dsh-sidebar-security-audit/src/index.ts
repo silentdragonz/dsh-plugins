@@ -13,7 +13,10 @@
  * @module dsh-sidebar-security-audit
  */
 import * as fs from 'node:fs/promises'
+import * as fsSync from 'node:fs'
+import * as os from 'node:os'
 import * as path from 'node:path'
+import { spawn } from 'node:child_process'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { isTrustedApiRequest } from './host/fence.ts'
 import {
@@ -65,6 +68,18 @@ export interface PluginContext {
 
 /** The route family prefix. */
 export const API_PREFIX = '/api/dsh-sidebar-security-audit'
+
+/**
+ * Editors opened by spawning their CLI with the file as argument. Zed's
+ * `zed://file/...` URL route ignores `cli_default_open_behavior` and opens a
+ * file-only project that replaces the already-open workspace window; the CLI
+ * path-argument form (`zed <file>[:<line>]`) honors it and reuses the
+ * workspace window, so file links for these apps go through /open-file.
+ */
+const CLI_FILE_EDITORS: ReadonlySet<string> = new Set(['zed'])
+
+/** Max request body bytes accepted by /open-file. */
+const MAX_OPEN_BODY_BYTES = 65536
 
 function writeJson(res: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body)
@@ -170,6 +185,147 @@ async function handleRequest(ctx: PluginContext, req: IncomingMessage, res: Serv
   writeJson(res, 404, { error: 'not found' })
 }
 
+/**
+ * Resolve candidate Zed CLI executables: PATH names first (`zed`, then the
+ * Fedora/RHEL package name `zeditor`), then the command token of the
+ * dev.zed.Zed desktop entry (the same launcher the harness open-in-app
+ * catalog uses on Linux). Absolute tokens verify on disk; bare names are
+ * verified against PATH by the spawn itself.
+ */
+async function zedCliCandidates(): Promise<string[]> {
+  const found: string[] = []
+  const add = (candidate: string): void => {
+    if (candidate !== '' && !found.includes(candidate)) found.push(candidate)
+  }
+  for (const name of ['zed', 'zeditor']) {
+    const dirs = (process.env.PATH ?? '').split(path.delimiter)
+    if (dirs.some(entry => entry !== '' && fsSync.existsSync(path.join(entry, name)))) add(name)
+  }
+  for (const dir of [
+    path.join(os.homedir(), '.local/share/applications'),
+    '/usr/share/applications',
+    '/usr/local/share/applications',
+  ]) {
+    try {
+      const text = await fs.readFile(path.join(dir, 'dev.zed.Zed.desktop'), 'utf8')
+      const exec = text.split(/\r?\n/).find(line => line.startsWith('Exec='))
+      if (exec !== undefined) {
+        const quoted = /^Exec="([^"]+)"/.exec(exec)
+        const command = quoted?.[1] ?? exec.slice(5).trim().split(/\s+/)[0] ?? ''
+        if (command !== '' && path.isAbsolute(command) && !fsSync.existsSync(command)) continue
+        add(command)
+      }
+      break
+    } catch { /* no desktop entry in this directory */ }
+  }
+  return found
+}
+
+/** Spawn one candidate detached; resolves true once the child spawned. */
+function spawnDetached(command: string, args: string[]): Promise<boolean> {
+  return new Promise(resolve => {
+    try {
+      const child = spawn(command, args, { detached: true, stdio: 'ignore' })
+      child.once('spawn', () => {
+        child.unref()
+        resolve(true)
+      })
+      child.once('error', () => resolve(false))
+    } catch {
+      resolve(false)
+    }
+  })
+}
+
+/** Read a bounded request body; null when oversized or unreadable. */
+async function readBody(req: IncomingMessage): Promise<string | null> {
+  const chunks: Buffer[] = []
+  let size = 0
+  try {
+    for await (const chunk of req) {
+      size += (chunk as Buffer).length
+      if (size > MAX_OPEN_BODY_BYTES) return null
+      chunks.push(chunk as Buffer)
+    }
+  } catch {
+    return null
+  }
+  return Buffer.concat(chunks).toString('utf8')
+}
+
+/** Append one diagnostic line per /open-file request (debug aid). */
+function openFileLog(message: string): void {
+  try {
+    fsSync.appendFileSync(
+      path.join(os.homedir(), '.dsh', 'tmp', 'zed-open.log'),
+      `${new Date().toISOString()} ${message}\n`,
+    )
+  } catch { /* logging is best-effort */ }
+}
+
+/**
+ * POST /open-file {app, path, line?}: open one existing absolute file in a
+ * CLI-file editor by spawning `<cli> <path>[:<line>]` — the launch form that
+ * reuses the running editor's open workspace window (Zed's zed:// URL route
+ * does not; it replaces the window with a file-only project).
+ */
+async function handleOpenFile(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const text = await readBody(req)
+  if (text === null) {
+    writeJson(res, 413, { error: 'request body too large' })
+    return
+  }
+  let body: unknown
+  try {
+    body = JSON.parse(text)
+  } catch {
+    writeJson(res, 400, { error: 'body must be JSON' })
+    return
+  }
+  if (body === null || typeof body !== 'object') {
+    writeJson(res, 400, { error: 'body must be a JSON object' })
+    return
+  }
+  const { app, path: file, line } = body as { app?: unknown; path?: unknown; line?: unknown }
+  if (typeof app !== 'string' || !CLI_FILE_EDITORS.has(app)) {
+    writeJson(res, 400, { error: `app must be one of: ${[...CLI_FILE_EDITORS].join(', ')}` })
+    return
+  }
+  if (typeof file !== 'string' || file === '' || !path.isAbsolute(file)) {
+    writeJson(res, 400, { error: 'path must be an absolute file path' })
+    return
+  }
+  if (line !== undefined && (typeof line !== 'number' || !Number.isInteger(line) || line < 1)) {
+    writeJson(res, 400, { error: 'line must be a positive integer' })
+    return
+  }
+  const stat = await fs.stat(file).catch(() => undefined)
+  if (stat === undefined) {
+    openFileLog(`404 missing file=${file} line=${String(line)}`)
+    writeJson(res, 404, { error: `file does not exist: ${file}` })
+    return
+  }
+  if (!stat.isFile()) {
+    writeJson(res, 400, { error: `path is not a regular file: ${file}` })
+    return
+  }
+  const target = line !== undefined ? `${file}:${line}` : file
+  const candidates = await zedCliCandidates()
+  for (const candidate of candidates) {
+    if (await spawnDetached(candidate, [target])) {
+      openFileLog(`ok launched=${candidate} target=${target}`)
+      writeJson(res, 200, { ok: true, launched: candidate })
+      return
+    }
+  }
+  openFileLog(`fail candidates=[${candidates.join(', ')}] target=${target}`)
+  writeJson(res, 502, {
+    error: candidates.length === 0
+      ? 'no zed CLI found (tried zed, zeditor, dev.zed.Zed desktop entry)'
+      : `failed to launch: ${candidates.join(', ')}`,
+  })
+}
+
 /** Plugin body: mount the fenced read-only routes. */
 export function apply(ctx: PluginContext): void {
   ctx.effect(() => {
@@ -180,6 +336,11 @@ export function apply(ctx: PluginContext): void {
         try {
           if (!isTrustedApiRequest(req, ctx.webRuntime?.trustedHosts ?? [])) {
             writeJson(res, 403, { error: 'forbidden' })
+            return
+          }
+          const pathname = new URL(req.url ?? '/', 'http://localhost').pathname
+          if ((req.method ?? 'GET') === 'POST' && pathname === `${API_PREFIX}/open-file`) {
+            await handleOpenFile(req, res)
             return
           }
           if ((req.method ?? 'GET') !== 'GET') {

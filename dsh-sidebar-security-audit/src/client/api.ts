@@ -34,6 +34,26 @@ export const api = {
   /** Raw text of one whitelisted artifact file (REPORT.md etc.). */
   report: (dir: string, file: string, root: string): Promise<TextFileResponse> =>
     getJson<TextFileResponse>('/report', { dir, file, root }),
+  /**
+   * Open one existing absolute file in a host CLI editor (zed): the host
+   * spawns `<cli> <path>[:<line>]`, the launch form that reuses the running
+   * editor's open workspace window (the zed:// URL route replaces it with a
+   * file-only project instead).
+   */
+  openFile: async (app: string, filePath: string, line?: number): Promise<void> => {
+    const resp = await fetch(`${API}/open-file`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(line !== undefined ? { app, path: filePath, line } : { app, path: filePath }),
+    })
+    if (!resp.ok) {
+      const body: unknown = await resp.json().catch(() => undefined)
+      const message = body !== null && typeof body === 'object' && 'error' in body
+        ? String((body as { error: unknown }).error)
+        : `HTTP ${resp.status}`
+      throw new Error(message)
+    }
+  },
 }
 
 /** The harness open-in-app routes (mounted on the same webServer origin). */
