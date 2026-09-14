@@ -102,6 +102,37 @@ assert.equal(post.status, 405)
 const nf = await get(`${API}/nope`)
 assert.equal(nf.status, 404)
 
+// --- session-scoped workspace: the panel's `session` param resolves through
+// the sessions service and wins over the first-session heuristic (the bug:
+// a tab browsing another workspace got served the harness/first session cwd);
+// an unknown session falls back to the client's `cwd` hint; a relative root
+// expands against the panel's workspace.
+const panelWs = path.join(sandbox, 'panel-workspace')
+await fs.mkdir(path.join(panelWs, '.security-audit'), { recursive: true })
+await makeRun(path.join(panelWs, '.security-audit'), 'repo-b', 'run-7')
+ctx.sessions = {
+  get: (id) => (id === 's-panel' ? { header: { cwd: panelWs } } : undefined),
+  list: () => [{ header: { cwd: workspace } }],
+}
+const ph = await get(`${API}/health?` + q({ session: 's-panel' }))
+assert.equal(ph.status, 200)
+assert.equal(ph.body.workspace, panelWs)
+assert.equal(ph.body.root, path.join(panelWs, '.security-audit'))
+const pr = await get(`${API}/runs?` + q({ session: 's-panel' }))
+assert.equal(pr.body.root, path.join(panelWs, '.security-audit'))
+assert.ok(pr.body.runs.some(r => r.repo === 'repo-b' && r.name === 'run-7'))
+const prel = await get(`${API}/runs?` + q({ session: 's-panel', root: '.security-audit' }))
+assert.equal(prel.status, 200)
+assert.equal(prel.body.root, path.join(panelWs, '.security-audit'))
+const phint = await get(`${API}/runs?` + q({ session: 'gone', cwd: panelWs }))
+assert.equal(phint.body.workspace, panelWs)
+const pguess = await get(`${API}/runs`)
+assert.equal(pguess.body.workspace, workspace)
+ctx.sessions = {
+  get: () => ({ header: { cwd: workspace } }),
+  list: () => [{ header: { cwd: workspace } }],
+}
+
 // --- root override: any local directory is now scannable (outside of any fixed base)
 const overrideBase = path.join(sandbox, 'other-audits')
 await makeRun(overrideBase, 'demo', 'run-2')

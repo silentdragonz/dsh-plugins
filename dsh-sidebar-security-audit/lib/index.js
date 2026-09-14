@@ -272,9 +272,12 @@ async function defaultAuditRoot(workspace, fallbackAbs) {
 * dsh-better-sidebar panel discover and read cloudflare/security-audit skill
 * runs — findings.json, REPORT.md, FINDINGS-DETAIL.md, architecture.md.
 *
-* Default audit root: the live workspace's .security-audit folder when it
-* exists, else the skill's default output root (~/security-audit-skill;
-* customizable via fallbackRoot / auditRoot config). An explicit root
+* Default audit root: the panel's workspace .security-audit folder when it
+* exists (the workspace is the session the panel tab is scoped to, sent as
+* the `session` param and resolved via the sessions service; else the
+* client's `cwd` hint, then host-side guesses), else the skill's default
+* output root (~/security-audit-skill; customizable via fallbackRoot /
+* auditRoot config). An explicit root
 * override (panel input; ~-, or workspace-relative) must be an existing
 * directory. Every served path is contained inside the audit root in use,
 * with symlink-escape refusal.
@@ -316,10 +319,20 @@ function resolvedSettings(ctx) {
 	};
 }
 /**
-* Workspace the panel treats as local: the live session cwd when the host
-* exposes sessions (initiator first, then any session), else the process cwd.
+* Workspace the panel treats as local. Route handlers run outside model-call
+* context, so the panel's own scope is the only per-tab signal: the tab's
+* `session` id first (resolved through the sessions service to the
+* authoritative header cwd), then the client's list-summary `cwd` hint when
+* the id misses, then the live initiator's session, then any session, then
+* the process cwd. Without the session parameter a tab browsing another
+* workspace would be served the first session's (or the harness's) cwd.
 */
-function currentWorkspace(ctx) {
+function currentWorkspace(ctx, sessionId, cwdHint) {
+	if (sessionId !== "") {
+		const cwd = ctx.sessions?.get?.(sessionId)?.header?.cwd;
+		if (cwd !== void 0 && cwd !== "") return cwd;
+	}
+	if (cwdHint !== "" && path.isAbsolute(cwdHint)) return cwdHint;
 	const initiator = (ctx.get?.("agents"))?.currentInitiator?.();
 	const cwd = (initiator !== void 0 && initiator.id !== void 0 ? ctx.sessions?.get?.(initiator.id) : void 0)?.header?.cwd ?? ctx.sessions?.list?.().find((s) => s?.header?.cwd !== void 0)?.header?.cwd;
 	return cwd !== void 0 && cwd !== "" ? cwd : process.cwd();
@@ -344,7 +357,7 @@ async function guardedDir(auditRoot, raw, res) {
 async function handleRequest(ctx, req, res) {
 	const url = new URL(req.url ?? "/", "http://localhost");
 	const sub = url.pathname.slice(31) || "/";
-	const workspace = currentWorkspace(ctx);
+	const workspace = currentWorkspace(ctx, url.searchParams.get("session") ?? "", url.searchParams.get("cwd") ?? "");
 	const settings = resolvedSettings(ctx);
 	const defaultRoot = settings.auditRoot !== "" ? expandRoot(settings.auditRoot, workspace) : await defaultAuditRoot(workspace, expandRoot(settings.fallbackRoot, workspace));
 	if (sub === "/health") {

@@ -8,6 +8,24 @@ import type { RunsResponse, TextFileResponse } from './types.ts'
 
 const API = '/api/dsh-sidebar-security-audit'
 
+/**
+ * The panel tab's session scope, threaded through every GET so the host
+ * resolves the workspace the tab is scoped to (`session` is authoritative,
+ * resolved server-side through the sessions service; `cwd` is the client's
+ * list-summary hint used when the id misses).
+ */
+export interface RequestScope {
+  sessionId?: string
+  cwd?: string
+}
+
+function scopeParams(scope: RequestScope | undefined): Record<string, string> {
+  const params: Record<string, string> = {}
+  if (scope?.sessionId !== undefined && scope.sessionId !== '') params.session = scope.sessionId
+  if (scope?.cwd !== undefined && scope.cwd !== '') params.cwd = scope.cwd
+  return params
+}
+
 async function getJson<T>(path: string, params: Record<string, string>): Promise<T> {
   const query = new URLSearchParams(params).toString()
   const resp = await fetch(query.length > 0 ? `${API}${path}?${query}` : `${API}${path}`, {
@@ -26,14 +44,17 @@ async function getJson<T>(path: string, params: Record<string, string>): Promise
 
 export const api = {
   /** List audit runs (default root when omitted). */
-  runs: (root?: string): Promise<RunsResponse> =>
-    getJson<RunsResponse>('/runs', root !== undefined && root !== '' ? { root } : {}),
+  runs: (root: string | undefined, scope?: RequestScope): Promise<RunsResponse> =>
+    getJson<RunsResponse>('/runs', {
+      ...scopeParams(scope),
+      ...(root !== undefined && root !== '' ? { root } : {}),
+    }),
   /** Raw findings.json content for one run directory (contained in `root`). */
-  findings: (dir: string, root: string): Promise<TextFileResponse> =>
-    getJson<TextFileResponse>('/findings', { dir, root }),
+  findings: (dir: string, root: string, scope?: RequestScope): Promise<TextFileResponse> =>
+    getJson<TextFileResponse>('/findings', { dir, root, ...scopeParams(scope) }),
   /** Raw text of one whitelisted artifact file (REPORT.md etc.). */
-  report: (dir: string, file: string, root: string): Promise<TextFileResponse> =>
-    getJson<TextFileResponse>('/report', { dir, file, root }),
+  report: (dir: string, file: string, root: string, scope?: RequestScope): Promise<TextFileResponse> =>
+    getJson<TextFileResponse>('/report', { dir, file, root, ...scopeParams(scope) }),
   /**
    * Open one existing absolute file in a host CLI editor (zed): the host
    * spawns `<cli> <path>[:<line>]`, the launch form that reuses the running

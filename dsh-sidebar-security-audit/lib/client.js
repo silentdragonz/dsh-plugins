@@ -8,6 +8,12 @@ window.__ModuleLoader__.load({
 		let react_jsx_runtime = require("react/jsx-runtime");
 		//#region src/client/api.ts
 		const API = "/api/dsh-sidebar-security-audit";
+		function scopeParams(scope) {
+			const params = {};
+			if (scope?.sessionId !== void 0 && scope.sessionId !== "") params.session = scope.sessionId;
+			if (scope?.cwd !== void 0 && scope.cwd !== "") params.cwd = scope.cwd;
+			return params;
+		}
 		async function getJson(path, params) {
 			const query = new URLSearchParams(params).toString();
 			const resp = await fetch(query.length > 0 ? `${API}${path}?${query}` : `${API}${path}`, {
@@ -23,17 +29,22 @@ window.__ModuleLoader__.load({
 		}
 		const api = {
 			/** List audit runs (default root when omitted). */
-			runs: (root) => getJson("/runs", root !== void 0 && root !== "" ? { root } : {}),
+			runs: (root, scope) => getJson("/runs", {
+				...scopeParams(scope),
+				...root !== void 0 && root !== "" ? { root } : {}
+			}),
 			/** Raw findings.json content for one run directory (contained in `root`). */
-			findings: (dir, root) => getJson("/findings", {
+			findings: (dir, root, scope) => getJson("/findings", {
 				dir,
-				root
+				root,
+				...scopeParams(scope)
 			}),
 			/** Raw text of one whitelisted artifact file (REPORT.md etc.). */
-			report: (dir, file, root) => getJson("/report", {
+			report: (dir, file, root, scope) => getJson("/report", {
 				dir,
 				file,
-				root
+				root,
+				...scopeParams(scope)
 			}),
 			/**
 			* Open one existing absolute file in a host CLI editor (zed): the host
@@ -644,8 +655,12 @@ url: async (url) => {
 		* paths) open the file's directory in the harness open-in-app editor
 		* (dsh >= 0.1.5-rc.1) when the host probed one.
 		*/
-		/** localStorage key for the root override. */
+		/** localStorage key prefix for the root override, namespaced per workspace cwd. */
 		const ROOT_KEY = "dsh-sidebar-security-audit:root";
+		/** The override key for one workspace cwd (global key when the cwd is unknown). */
+		function rootKeyFor(cwd) {
+			return cwd !== "" ? `${ROOT_KEY}:${cwd}` : ROOT_KEY;
+		}
 		/** Artifacts openable in the sidebar viewer (host-whitelisted). */
 		const ARTIFACTS = [
 			"REPORT.md",
@@ -703,17 +718,17 @@ url: async (url) => {
 		* the CLI path-argument form reuses the workspace window.
 		*/
 		const HOST_CLI_EDITORS = /* @__PURE__ */ new Set(["zed"]);
-		function loadStoredRoot() {
+		function loadStoredRoot(cwd) {
 			try {
-				return window.localStorage.getItem(ROOT_KEY) ?? "";
+				return window.localStorage.getItem(rootKeyFor(cwd)) ?? "";
 			} catch {
 				return "";
 			}
 		}
-		function storeRoot(root) {
+		function storeRoot(cwd, root) {
 			try {
-				if (root === "") window.localStorage.removeItem(ROOT_KEY);
-				else window.localStorage.setItem(ROOT_KEY, root);
+				if (root === "") window.localStorage.removeItem(rootKeyFor(cwd));
+				else window.localStorage.setItem(rootKeyFor(cwd), root);
 			} catch {}
 		}
 		function formatTime(ms) {
@@ -754,8 +769,13 @@ url: async (url) => {
 		}
 		function AuditPanel(props) {
 			const { scope, service, visible } = props;
-			const [rootDraft, setRootDraft] = (0, react.useState)(loadStoredRoot);
-			const [root, setRoot] = (0, react.useState)(loadStoredRoot);
+			const wsCwd = scope.cwd ?? "";
+			const requestScope = (0, react.useMemo)(() => ({
+				sessionId: scope.sessionId,
+				cwd: scope.cwd
+			}), [scope.sessionId, scope.cwd]);
+			const [rootDraft, setRootDraft] = (0, react.useState)(() => loadStoredRoot(wsCwd));
+			const [root, setRoot] = (0, react.useState)(() => loadStoredRoot(wsCwd));
 			const [serverRoot, setServerRoot] = (0, react.useState)("");
 			const [workspace, setWorkspace] = (0, react.useState)("");
 			const [runs, setRuns] = (0, react.useState)([]);
@@ -781,7 +801,7 @@ url: async (url) => {
 				setError("");
 				setOpenError("");
 				try {
-					const resp = await api.runs(rootOverride !== void 0 && rootOverride !== "" ? rootOverride : void 0);
+					const resp = await api.runs(rootOverride !== void 0 && rootOverride !== "" ? rootOverride : void 0, requestScope);
 					setRuns(resp.runs);
 					setServerRoot(resp.root);
 					setWorkspace(resp.workspace);
@@ -793,13 +813,18 @@ url: async (url) => {
 				} finally {
 					setLoadingRuns(false);
 				}
-			}, []);
+			}, [requestScope]);
+			(0, react.useEffect)(() => {
+				const stored = loadStoredRoot(wsCwd);
+				setRootDraft(stored);
+				setRoot(stored);
+			}, [wsCwd]);
 			(0, react.useEffect)(() => {
 				refresh(root !== "" ? root : void 0);
 			}, [refresh, root]);
 			(0, react.useEffect)(() => {
 				if (visible) refresh(root !== "" ? root : void 0);
-			}, [visible]);
+			}, [visible, refresh]);
 			const selected = (0, react.useMemo)(() => runs.find((r) => r.dir === selectedDir), [runs, selectedDir]);
 			(0, react.useEffect)(() => {
 				let cancelled = false;
@@ -809,7 +834,7 @@ url: async (url) => {
 					return;
 				}
 				setLoadingFindings(true);
-				api.findings(selectedDir, serverRoot).then((resp) => {
+				api.findings(selectedDir, serverRoot, requestScope).then((resp) => {
 					if (cancelled) return;
 					const parsed = parseFindings(resp.content);
 					setFindings(parsed.findings);
@@ -824,7 +849,11 @@ url: async (url) => {
 				return () => {
 					cancelled = true;
 				};
-			}, [selectedDir, serverRoot]);
+			}, [
+				selectedDir,
+				serverRoot,
+				requestScope
+			]);
 			const clientCounts = (0, react.useMemo)(() => {
 				const counts = {
 					total: findings.length,
@@ -875,7 +904,7 @@ url: async (url) => {
 			};
 			const applyRoot = () => {
 				const next = rootDraft.trim();
-				storeRoot(next);
+				storeRoot(wsCwd, next);
 				setRoot(next);
 			};
 			/**
@@ -967,7 +996,7 @@ url: async (url) => {
 										className: "dsa-btn",
 										onClick: () => {
 											setRootDraft("");
-											storeRoot("");
+											storeRoot(wsCwd, "");
 											setRoot("");
 										},
 										title: "Back to server default",

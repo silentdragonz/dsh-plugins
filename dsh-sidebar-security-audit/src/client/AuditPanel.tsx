@@ -14,8 +14,12 @@ import { SEVERITY_ORDER, SEVERITY_COLORS, SEVERITY_LABELS, asSeverity } from './
 import { FindingCard } from './FindingCard.tsx'
 import { injectStyles } from './styles.ts'
 
-/** localStorage key for the root override. */
+/** localStorage key prefix for the root override, namespaced per workspace cwd. */
 const ROOT_KEY = 'dsh-sidebar-security-audit:root'
+/** The override key for one workspace cwd (global key when the cwd is unknown). */
+function rootKeyFor(cwd: string): string {
+  return cwd !== '' ? `${ROOT_KEY}:${cwd}` : ROOT_KEY
+}
 /** Artifacts openable in the sidebar viewer (host-whitelisted). */
 const ARTIFACTS = ['REPORT.md', 'FINDINGS-DETAIL.md', 'architecture.md'] as const
 /**
@@ -52,18 +56,18 @@ const HOST_CLI_EDITORS: ReadonlySet<string> = new Set(['zed'])
 
 type VerdictFilter = 'all' | 'confirmed' | 'blocked' | 'rejected'
 
-function loadStoredRoot(): string {
+function loadStoredRoot(cwd: string): string {
   try {
-    return window.localStorage.getItem(ROOT_KEY) ?? ''
+    return window.localStorage.getItem(rootKeyFor(cwd)) ?? ''
   } catch {
     return ''
   }
 }
 
-function storeRoot(root: string): void {
+function storeRoot(cwd: string, root: string): void {
   try {
-    if (root === '') window.localStorage.removeItem(ROOT_KEY)
-    else window.localStorage.setItem(ROOT_KEY, root)
+    if (root === '') window.localStorage.removeItem(rootKeyFor(cwd))
+    else window.localStorage.setItem(rootKeyFor(cwd), root)
   } catch { /* storage unavailable */ }
 }
 
@@ -117,8 +121,16 @@ function resolveOpenApp(apps: readonly string[]): string {
 
 export function AuditPanel(props: AuditPanelProps): ReactNode {
   const { scope, service, visible } = props
-  const [rootDraft, setRootDraft] = useState<string>(loadStoredRoot)
-  const [root, setRoot] = useState<string>(loadStoredRoot)
+  // The workspace this tab is scoped to: sent with every request so the host
+  // resolves the right workspace, and used to namespace the root override
+  // (one override per workspace, never leaking across tabs).
+  const wsCwd = scope.cwd ?? ''
+  const requestScope = useMemo(
+    () => ({ sessionId: scope.sessionId, cwd: scope.cwd }),
+    [scope.sessionId, scope.cwd],
+  )
+  const [rootDraft, setRootDraft] = useState<string>(() => loadStoredRoot(wsCwd))
+  const [root, setRoot] = useState<string>(() => loadStoredRoot(wsCwd))
   const [serverRoot, setServerRoot] = useState<string>('')
   const [workspace, setWorkspace] = useState<string>('')
   const [runs, setRuns] = useState<RunInfo[]>([])
@@ -143,7 +155,7 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
     setError('')
     setOpenError('')
     try {
-      const resp = await api.runs(rootOverride !== undefined && rootOverride !== '' ? rootOverride : undefined)
+      const resp = await api.runs(rootOverride !== undefined && rootOverride !== '' ? rootOverride : undefined, requestScope)
       setRuns(resp.runs)
       setServerRoot(resp.root)
       setWorkspace(resp.workspace)
@@ -157,7 +169,15 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
     } finally {
       setLoadingRuns(false)
     }
-  }, [])
+  }, [requestScope])
+
+  // The tab follows the session it is scoped to: when that switches, load the
+  // root override stored for the new workspace (the refresh effect refires).
+  useEffect(() => {
+    const stored = loadStoredRoot(wsCwd)
+    setRootDraft(stored)
+    setRoot(stored)
+  }, [wsCwd])
 
   useEffect(() => {
     void refresh(root !== '' ? root : undefined)
@@ -167,7 +187,7 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
   useEffect(() => {
     if (visible) void refresh(root !== '' ? root : undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible])
+  }, [visible, refresh])
 
   const selected = useMemo(() => runs.find(r => r.dir === selectedDir), [runs, selectedDir])
 
@@ -179,7 +199,7 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
       return
     }
     setLoadingFindings(true)
-    api.findings(selectedDir, serverRoot)
+    api.findings(selectedDir, serverRoot, requestScope)
       .then(resp => {
         if (cancelled) return
         const parsed = parseFindings(resp.content)
@@ -193,7 +213,7 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
       })
       .finally(() => { if (!cancelled) setLoadingFindings(false) })
     return () => { cancelled = true }
-  }, [selectedDir, serverRoot])
+  }, [selectedDir, serverRoot, requestScope])
 
   const clientCounts = useMemo(() => {
     const counts = { total: findings.length, confirmed: 0, needsValidation: 0, rejected: 0 }
@@ -252,7 +272,7 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
 
   const applyRoot = (): void => {
     const next = rootDraft.trim()
-    storeRoot(next)
+    storeRoot(wsCwd, next)
     setRoot(next)
   }
 
@@ -329,7 +349,7 @@ export function AuditPanel(props: AuditPanelProps): ReactNode {
             title="Audit root directory (absolute, ~/…, or relative to the workspace)"
           />
           {root !== '' && (
-            <button className="dsa-btn" onClick={() => { setRootDraft(''); storeRoot(''); setRoot('') }} title="Back to server default">
+            <button className="dsa-btn" onClick={() => { setRootDraft(''); storeRoot(wsCwd, ''); setRoot('') }} title="Back to server default">
               Default
             </button>
           )}
