@@ -34,7 +34,32 @@ window.__ModuleLoader__.load({
 				dir,
 				file,
 				root
-			})
+			}),
+			/**
+			* Open one existing absolute file in a host CLI editor (zed): the host
+			* spawns `<cli> <path>[:<line>]`, the launch form that reuses the running
+			* editor's open workspace window (the zed:// URL route replaces it with a
+			* file-only project instead).
+			*/
+			openFile: async (app, filePath, line) => {
+				const resp = await fetch(`${API}/open-file`, {
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify(line !== void 0 ? {
+						app,
+						path: filePath,
+						line
+					} : {
+						app,
+						path: filePath
+					})
+				});
+				if (!resp.ok) {
+					const body = await resp.json().catch(() => void 0);
+					const message = body !== null && typeof body === "object" && "error" in body ? String(body.error) : `HTTP ${resp.status}`;
+					throw new Error(message);
+				}
+			}
 		};
 		/** The harness open-in-app routes (mounted on the same webServer origin). */
 		const OPEN_APPS_ROUTE = "/open-in-app/apps";
@@ -668,12 +693,16 @@ url: async (url) => {
 			windsurf: {
 				template: "windsurf://file/{path}",
 				lineTargeted: true
-			},
-			zed: {
-				template: "zed://file/{path}",
-				lineTargeted: true
 			}
 		};
+		/**
+		* Editors opened through the plugin's host /open-file route (the host spawns
+		* the editor CLI with `path[:line]`). Zed must NOT use a URL scheme here:
+		* its `zed://file/...` handler ignores `cli_default_open_behavior` and opens
+		* a file-only project that replaces the already-open workspace window, while
+		* the CLI path-argument form reuses the workspace window.
+		*/
+		const HOST_CLI_EDITORS = /* @__PURE__ */ new Set(["zed"]);
 		function loadStoredRoot() {
 			try {
 				return window.localStorage.getItem(ROOT_KEY) ?? "";
@@ -851,10 +880,12 @@ url: async (url) => {
 			};
 			/**
 			* Open a finding's file ref in the harness-selected editor. Trace paths
-			* are repo-relative (absolute and `./`-prefixed are honored). Editors with
-			* a file URL scheme (vscode family, zed) launch on the FILE itself through
-			* better-sidebar's open.external opener, line included when known; every
-			* other app (file managers) falls back to harness open-in-app on the
+			* are repo-relative (absolute and `./`-prefixed are honored). Host CLI
+			* editors (zed) launch through the plugin's /open-file route, which spawns
+			* the editor CLI with the file and reuses the open workspace window;
+			* editors with a file URL scheme (vscode family) launch on the FILE itself
+			* through better-sidebar's open.external opener, line included when known;
+			* every other app (file managers) falls back to harness open-in-app on the
 			* file's containing directory.
 			*/
 			const openFileRef = (0, react.useCallback)((file, line) => {
@@ -868,6 +899,12 @@ url: async (url) => {
 				const app = resolveOpenApp(openApps);
 				if (app === "") return;
 				setOpenError("");
+				if (HOST_CLI_EDITORS.has(app)) {
+					api.openFile(app, abs, line).catch((e) => {
+						setOpenError(e instanceof Error ? e.message : String(e));
+					});
+					return;
+				}
 				const scheme = EDITOR_URL_SCHEMES[app];
 				if (scheme !== void 0) {
 					const normalized = abs.replace(/\\/g, "/");
