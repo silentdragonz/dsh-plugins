@@ -1,0 +1,27 @@
+# dsh-gitlab-follow-workspace bundle patch.
+#
+# Applied when this package joins a profile's `dsh.profile.bundles` layer
+# stack — which `dsh plugin --profile <name> add` does automatically, because
+# this package.json declares `dsh.bundle.patch`. The inserted row mounts the
+# plugin, which discovers the gitlab MCP server's tool list and registers it
+# on the host tools registry with per-workspace routing.
+#
+# The row carries no config here: every field has a schema default in
+# lib/index.js (command, args, env, defaultCwd, timeouts, pool size).
+# Per-deployment overrides go in the profile's own cordis.patch.yml, targeting
+# this row id:
+#
+#   - id: gitlab-follow-workspace
+#     config:
+#       env:
+#         GITLAB_API_URL: https://gitlab.example.com/api/v4
+#         GITLAB_PERSONAL_ACCESS_TOKEN: glpat-...
+#
+# Only override what must differ; the rest keeps its schema default.
+#
+# NOTE: remove any stock `mcp-gitlab` mcp-client insert row when adopting
+# this plugin — both bridges claim the same `mcp__gitlab__` tool namespace,
+# and the registry rejects duplicates.
+- insert:
+    - id: gitlab-follow-workspace
+      name: dsh-gitlab-follow-workspace
