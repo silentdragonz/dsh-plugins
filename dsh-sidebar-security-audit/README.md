@@ -21,7 +21,7 @@ Registers a **Security Audit** sidebar tab (shield icon) that:
   entry/sink paths with line numbers, remediation file names) open the **file itself** in the
   editor selected in the harness open-in-app button (vscode-family / zed URL schemes through
   better-sidebar's external opener; other apps open the file's directory via the harness
-  open-in-app route, `dsh >= 0.1.5-rc.1`). A host without the routes renders refs inert.
+  open-in-app route, `dsh >= 0.1.7-rc.1`). A host without the routes renders refs inert.
 - Renders each finding as a card: severity + confidence badges, description, root cause, the
   entrypoint→sink **trace**, exploitation conditions, execution (payloads / instructions /
   expected result), remediation and severity rationale. Rejected findings show the rejection reason.

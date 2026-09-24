@@ -6,7 +6,7 @@ browser output visible in the DSH web GUI:
 1. **Inline screenshot card** — replaces the tool row for
    `mcp__browser__browser_take_screenshot` with an actual `<img>`. Click for a
    full-size modal (Esc / click-away to close).
-2. **Live Browser sidebar tab** (`dsh-better-sidebar`) — a live view of the
+2. **Live Browser sidebar tab** (native right Sidebar, `ctx.sidebarRightTabs`) — a live view of the
    headless browser while it is in use, with Play / Pause.
 
 Images reach the browser as plain **same-origin** URLs (`/api/dsh-shtv/…`), so

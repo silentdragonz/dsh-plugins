@@ -1,7 +1,7 @@
 {
   "name": "dsh-shtv",
-  "version": "1.1.2",
-  "description": "Inline Playwright MCP screenshot card + Live Browser sidebar panel for the DSH web GUI. Host serves workspace screenshots and a live frame pump feed over fenced loopback routes (/api/dsh-shtv); the client registers the tool.call.toolview card for mcp__browser__browser_take_screenshot and a dsh-better-sidebar Live Browser tab.",
+  "version": "1.2.0",
+  "description": "Inline Playwright MCP screenshot card + Live Browser sidebar panel for the DSH web GUI. Host serves workspace screenshots and a live frame pump feed over fenced loopback routes (/api/dsh-shtv); the client registers the tool.call.toolview card for mcp__browser__browser_take_screenshot and a native right-Sidebar Live Browser tab (ctx.sidebarRightTabs).",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -11,7 +11,7 @@
   },
   "dsh": {
     "bundle": { "patch": "./cordis.patch.yml" },
-    "client": { "inject": [], "platform": "web" }
+    "client": { "inject": ["@deepseek-ai/dsh-client-ui-slots", "@deepseek-ai/dsh-client-ui-sidebar-right", "@deepseek-ai/dsh-client-ui-conversation"], "platform": "web" }
   },
   "peerDependencies": {
     "react": "^18.2.0"

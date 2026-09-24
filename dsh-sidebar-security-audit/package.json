@@ -1,6 +1,6 @@
 {
   "name": "dsh-sidebar-security-audit",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "description": "dsh-better-sidebar panel for the cloudflare/security-audit skill: discovers audit runs under the workspace's .security-audit or ~/security-audit-skill, parses findings.json (report-schema.json shape), and renders severity stats, confirmed/rejected finding cards, and one-click report opening.",
   "type": "module",
   "engines": {
@@ -20,14 +20,14 @@
     },
     "client": {
       "inject": [
-        "@deepseek-ai/dsh-client-runtime"
+        "dsh-better-sidebar"
       ],
       "platform": "web"
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-host-webserver": ">=0.1.5-rc.1",
-    "dsh-better-sidebar": ">=0.18.0",
+    "@deepseek-ai/dsh-host-webserver": "^0.1.7-rc.1",
+    "dsh-better-sidebar": "^0.21.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
@@ -37,12 +37,12 @@
     }
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/dsh-host-webserver": "^0.1.2-rc.1",
+    "@deepseek-ai/cordis": "^4.0.4",
+    "@deepseek-ai/dsh-host-webserver": "^0.1.7-rc.1",
     "@types/node": "^24.0.0",
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.3.1",
-    "dsh-better-sidebar": "^0.18.0",
+    "dsh-better-sidebar": "^0.21.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "tsdown": "^0.22.2",

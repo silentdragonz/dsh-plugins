@@ -1,6 +1,7 @@
 // dsh-shtv client bundle.
 // 1) tool.call.toolview card for mcp__browser__browser_take_screenshot (same-origin <img>).
-// 2) dsh-better-sidebar "Live Browser" tab: live frames from the host's /live routes.
+// 2) Native right-Sidebar "Live Browser" tab (ctx.sidebarRightTabs): live frames
+//    from the host's /live routes.
 //    The frame pump lives in the MCP browser's Playwright process; it idles unless the
 //    host says active (this panel's Start/Stop toggles that flag same-origin). Starting
 //    the pump for the first time (or after a browser restart) is agent work: the Start
@@ -98,12 +99,23 @@ window.__ModuleLoader__.load({
 		/* ---------- live feed tab ---------- */
 		const SEED_MSG = "[dsh-shtv live] No frame pump is running. Please seed the pump: GET " + API + "/live/stopstate via the browser's page.request first; if there is no recent pump, run the documented dsh-shtv pump snippet through browser_run_code_unsafe (loop: while host stopstate.stop is false and active is true, page.screenshot to .playwright-mcp/live/frame.jpg jpeg q55 scale css; poll " + API + "/live/stopstate via page.request each cycle; waitForTimeout(active?600:1200)). Then GET " + API + "/live/set?on=1. Do not screenshot into the chat.";
 
-		function sendAgentMessage(sessions, text) {
+		/** Ask the agent in the on-screen session to seed the pump. The mounted
+		 *  seat is the sanctioned "current session" feed on DSH 0.1.7 (the
+		 *  session-list snapshot has no `current` field there); the conversation
+		 *  service rebinds to the caller's scope on property access, so reading
+		 *  it off the scoped context addresses that session. */
+		function sendAgentMessage(ctx, text) {
 			try {
-				const current = sessions.list.getSnapshot().current;
-				const conv = sessions.scope(current)?.get("conversation");
+				const mounted = ctx.sidebarRight !== undefined
+					&& typeof ctx.sidebarRight.mounted?.getSnapshot === "function"
+					? ctx.sidebarRight.mounted.getSnapshot()
+					: undefined;
+				if (mounted === undefined) return false;
+				const actx = ctx.sessions.scope(mounted);
+				if (actx === undefined) return false;
+				const conv = actx.conversation;
 				if (conv === undefined) return false;
-				conv.send(text);
+				void conv.send(text);
 				return true;
 			} catch (e) {
 				return false;
@@ -111,7 +123,7 @@ window.__ModuleLoader__.load({
 		}
 
 		function LivePanel(props) {
-			const sessions = props.sessions;
+			const ctx = props.ctx;
 			const [meta, setMeta] = React.useState(null);
 			const [tick, setTick] = React.useState(0);
 			const [note, setNote] = React.useState("");
@@ -137,7 +149,7 @@ window.__ModuleLoader__.load({
 					const r = await fetch(API + "/live/set?on=" + (on ? 1 : 0));
 					const j = await r.json();
 					if (on && j && j.pumpActive === false) {
-						const sent = sendAgentMessage(sessions, SEED_MSG);
+						const sent = sendAgentMessage(ctx, SEED_MSG);
 						setNote(sent ? "no pump running — asked the agent to seed it" : "no pump running — ask the agent to seed the live pump");
 					} else {
 						setNote(on ? "play requested" : "pause requested");
@@ -190,10 +202,11 @@ window.__ModuleLoader__.load({
 		}
 
 		/* ---------- plugin wiring ---------- */
-		/** Services required before mounting. betterSidebar must be DECLARED in
-		 *  inject to be visible on the cordis context (the row waits if it
-		 *  mounts before the sidebar's client layer). */
-		const inject = ["slots", "sessions", "betterSidebar"];
+		/** Services required before mounting. `slots` carries both seats, `sessions`
+		 *  the conversation scope, and the sidebar-right pair the native tab
+		 *  registry (`sidebarRightTabs`) and the mounted-seat feed (`sidebarRight`).
+		 *  The loader waits for every one of them before apply runs. */
+		const inject = ["slots", "sessions", "sidebarRightTabs", "sidebarRight"];
 		/** Plugin body. */
 		function apply(ctx) {
 			const disposers = [];
@@ -203,14 +216,26 @@ window.__ModuleLoader__.load({
 					key: "mcp__browser__browser_take_screenshot"
 				}, (props) => React.createElement(Card, props))), "dsh-shtv: toolview"));
 			}
-			if (ctx.betterSidebar !== undefined) {
-				disposers.push(ctx.effect(() => ctx.betterSidebar.registerTab({
-					id: "shtv:live",
+			// Live Browser tab: one native page type of its own kind. Page kinds
+			// deduplicate within the target pane on their own (the old better-sidebar
+			// `single: true` is the native default), and the guide entry is what the
+			// + menu lists. The chip keeps the definition title; no title slot needed.
+			if (ctx.sidebarRightTabs !== undefined) {
+				disposers.push(ctx.effect(() => ctx.sidebarRightTabs.register({
+					id: "dsh-shtv:live",
+					kind: "shtv:live",
+					priority: "extension",
 					title: () => "Live Browser",
-					order: 58,
-					single: true,
-					component: () => React.createElement(LivePanel, { sessions: ctx.sessions })
-				}), "dsh-shtv: live tab"));
+					guide: [{ id: "live", order: 58, title: () => "Live Browser" }]
+				}), "dsh-shtv: live tab type"));
+			}
+			if (ctx.slots !== undefined) {
+				disposers.push(ctx.effect(() => ctx.slots.inject("sidebar.right.pane.tab", () => ctx.slots.register({
+					name: "sidebar.right.pane.tab",
+					// The seat finds the body under the tab definition's own identity.
+					key: "dsh-shtv:live",
+					inject: (sessionId) => ({ sessionId })
+				}, () => React.createElement(LivePanel, { ctx }))), "dsh-shtv: live tab body"));
 			}
 			return () => { for (const d of disposers) { try { d(); } catch (e) { /* ignore */ } } };
 		}
