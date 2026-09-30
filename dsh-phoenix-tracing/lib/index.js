@@ -189,13 +189,17 @@ export class PhoenixSessionBackend extends SessionTelemetryBackend {
 
     if (mode === 'FULL') {
       this._emit = enqueue;
+      /* Dual-harness line call: 0.1 takes a positional 'live'/'on-demand'
+         string, 0.2+ takes { capture }. 'live' behaves identically on both
+         (0.2 defaults to live), and { capture: 'on-demand' } reads as
+         non-"live" on 0.1 and on-demand on 0.2+. */
       new SessionTelemetryCoordinator(ctx, sink, 'live');
       return;
     }
 
     // FEEDBACK_ONLY: capture is replayed on demand at the feedback edge.
     this._emit = DROP_RECORD;
-    const coordinator = new SessionTelemetryCoordinator(ctx, sink, 'on-demand');
+    const coordinator = new SessionTelemetryCoordinator(ctx, sink, { capture: 'on-demand' });
     ctx.on('session/event', function (session, event) {
       if (event.type !== 'feedback/record') return;
       if (session.eventAt(event.seq) !== event) {

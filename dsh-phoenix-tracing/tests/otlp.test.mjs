@@ -53,7 +53,7 @@ test('spans export over OTLP/HTTP to the configured Phoenix endpoint', async () 
       shutdownTimeoutMillis: 4000,
     });
     const session = {
-      id: 'sess-wire', firstLiveSeq: 0, log: [], header: { cwd: '/w' },
+      id: 'sess-wire', firstLiveSeq: 0, firstLifecycleSeq: 0, log: [], header: { cwd: '/w' },
       get seq() { return this.log.length; },
       eventAt: function (seq) { return this.log[seq]; },
       snapshotEvents: function (fromSeq = 0, toSeqExclusive = this.log.length) {

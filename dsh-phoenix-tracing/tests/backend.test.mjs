@@ -51,7 +51,10 @@ function makeCtx() {
 function makeSession(id) {
   return {
     id: id,
+    /* 0.1 harness contract (`firstLiveSeq`) and 0.2+ (`firstLifecycleSeq`):
+       the coordinator versions read one or the other; both zero here. */
     firstLiveSeq: 0,
+    firstLifecycleSeq: 0,
     log: [],
     header: { cwd: '/work', parentSession: undefined, isSeeded: false },
     get seq() { return this.log.length; },
